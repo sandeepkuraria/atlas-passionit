@@ -1,0 +1,113 @@
+.about-container {
+  font-family: "Poppins";
+}
+
+.about-header {
+  background-color: #fcf9f0;
+  text-align: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-image: url(../Images/atlas-bg.png);
+  height: 450px;
+}
+
+.about-header-container {
+  background-color: #fcf9f0;
+  border-radius: 50px;
+  margin: 50px;
+  width: fit-content;
+  padding: 30px;
+  color: #333;
+}
+.about_header_div {
+  display: flex;
+  justify-content: space-between;
+}
+.about-header h1 {
+  font-size: 36px;
+  color: #333;
+}
+
+.about-header p {
+  font-size: 18px;
+  color: #555;
+}
+
+.cta-buttons {
+  margin: 20px 0;
+}
+
+.cta-buttons button {
+  padding: 10px 20px;
+  margin: 5px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.cta-buttons button:hover {
+  background-color: #0056b3;
+}
+
+.vision-section,
+.mission-section,
+.what-we-do-section {
+  margin: 40px 0;
+}
+
+.vision-section h2,
+.mission-section h2,
+.what-we-do-section h2 {
+  font-size: 28px;
+  color: #333;
+}
+
+.vision-section p,
+.mission-section ul,
+.what-we-do-section ul {
+  font-size: 18px;
+  color: #555;
+}
+
+.mission-section ul,
+.what-we-do-section ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.mission-section ul li,
+.what-we-do-section ul li {
+  margin: 10px 0;
+}
+
+.about-footer {
+  margin-top: 40px;
+  padding: 10px;
+  text-align: center;
+  background-color: #fcf9f0;
+}
+
+.about-footer address {
+  font-size: 16px;
+  color: #000000;
+}
+
+.about-footer .legal-links {
+  margin: 10px 0;
+}
+
+.about-footer .legal-links a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.about-footer .legal-links a:hover {
+  text-decoration: underline;
+}
+
+.about-footer p {
+  font-size: 14px;
+  color: #fa713b;
+}
