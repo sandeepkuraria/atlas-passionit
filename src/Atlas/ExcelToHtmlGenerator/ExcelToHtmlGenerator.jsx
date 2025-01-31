@@ -1959,36 +1959,62 @@ const ExcelToHtmlGenerator = () => {
   const [showData, setShowData] = useState(true);
   const [previewHtml, setPreviewHtml] = useState(null);
 
-  // Handle Excel file upload
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
-        alert("Please upload a valid Excel file.");
-        return;
-      }
-
+    const handleFileUpload = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+  
       const reader = new FileReader();
       reader.onload = (event) => {
-        try {
-          const data = new Uint8Array(event.target.result);
-          const workbook = XLSX.read(data, { type: "array" });
-          const sheetName = workbook.SheetNames[0];
-          const sheetData = XLSX.utils.sheet_to_json(
-            workbook.Sheets[sheetName]
-          );
-          console.log("sheetData while uploading+++++++++++", sheetData);
-          setExcelData(sheetData);
-        } catch (error) {
-          alert(
-            "Error reading Excel file. Please ensure it is in the correct format."
-          );
-          console.error(error);
-        }
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  
+        const headers = jsonData[0];
+        const rows = jsonData.slice(1).map((row) =>
+          headers.reduce((acc, header, index) => {
+            acc[header] = row[index] || ""; // Map headers to row data
+            return acc;
+          }, {})
+        );
+  
+        console.log("Excel Data Parsed:", rows);
+        setExcelData(rows);
       };
       reader.readAsArrayBuffer(file);
-    }
-  };
+    };
+
+  // // Handle Excel file upload
+  // const handleFileUpload = (e) => {
+  //   const file = e.target.files[0];
+  //   if (file) {
+  //     if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".xls")) {
+  //       alert("Please upload a valid Excel file.");
+  //       return;
+  //     }
+
+  //     const reader = new FileReader();
+  //     reader.onload = (event) => {
+  //       try {
+  //         const data = new Uint8Array(event.target.result);
+  //         const workbook = XLSX.read(data, { type: "array" });
+  //         const sheetName = workbook.SheetNames[0];
+  //         const sheetData = XLSX.utils.sheet_to_json(
+  //           workbook.Sheets[sheetName]
+  //         );
+  //         console.log("sheetData while uploading+++++++++++", sheetData);
+  //         setExcelData(sheetData);
+  //       } catch (error) {
+  //         alert(
+  //           "Error reading Excel file. Please ensure it is in the correct format."
+  //         );
+  //         console.error(error);
+  //       }
+  //     };
+  //     reader.readAsArrayBuffer(file);
+  //   }
+  // };
 
   const normalizeKey = (key) =>
     key.trim().toLowerCase().replace(/ /g, "_").replace(/[()]/g, "");
@@ -2023,47 +2049,156 @@ const ExcelToHtmlGenerator = () => {
     }
     return filledTemplate;
   };
-
+  
   const generateHtmlPages = async () => {
     if (excelData.length === 0) {
-      alert("No data to generate HTML pages. Please upload an Excel file.");
-      return;
+        alert("No data to generate HTML pages. Please upload an Excel file.");
+        return;
     }
 
-    const zip = new JSZip(); // Initialize a new ZIP file
-    const folder = zip.folder("Generated_HTML_Files"); // Create a folder inside the ZIP
+    const requests = excelData.map(async (row, index) => {
+        const htmlContent = generateHTMLContent(row);
+        let fileName = row["Title"] || `page-${index + 1}`;
 
-    excelData.forEach((row, index) => {
-      const htmlContent = generateHTMLContent(row); // Generate HTML for the row
-      let fileName = row["Title"] || `page-${index + 1}`; // Use the Title column or a default name
+        fileName = fileName
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\./g, "")
+            .replace(/\s+/g, "-")
+            .replace(/[^a-zA-Z0-9\-]/g, "")
+            .toLowerCase();
 
-      // Clean the file name: replace spaces with hyphens and remove unwanted characters
-      fileName = fileName
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\./g, "")
-        .replace(/\s+/g, "-")
-        .replace(/[^a-zA-Z0-9\-]/g, "")
-        .toLowerCase();
+        try {
+            console.log(`🟡 Sending request ${index + 1}/${excelData.length}: ${fileName}.html`);
 
-      const fileNameWithExtension = `${fileName}.html`;
+            const response = await fetch("http://localhost:5018/save-html", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fileName, htmlContent }),
+            });
 
-      // Add the file to the ZIP folder
-      folder.file(fileNameWithExtension, htmlContent);
+            const result = await response.json();
+            console.log(`🟢 Response for ${fileName}.html:`, result);
+        } catch (error) {
+            console.error(`❌ Error saving ${fileName}.html:`, error);
+        }
     });
 
-    // Generate the ZIP file and save it
-    zip
-      .generateAsync({ type: "blob" })
-      .then((content) => {
-        saveAs(content, "Generated_HTML_Files.zip"); // Save the ZIP file with a default name
-        alert("ZIP file with HTML pages generated successfully!");
-      })
-      .catch((error) => {
-        console.error("Error creating ZIP file:", error);
-        alert("An error occurred while generating the ZIP file.");
-      });
-  };
+    // await Promise.all(requests);
+
+    alert("All HTML files saved successfully!");
+};
+
+
+//   const generateHtmlPages = async () => {
+//     if (excelData.length === 0) {
+//       alert("No data to generate HTML pages. Please upload an Excel file.");
+//       return;
+//     }
+  
+//     const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// for (let index = 0; index < excelData.length; index++) {
+//   const row = excelData[index];
+//   const htmlContent = generateHTMLContent(row);
+//   let fileName = row["Title"] || `page-${index + 1}`;
+
+//   fileName = fileName
+//     .normalize("NFD")
+//     .replace(/[\u0300-\u036f]/g, "")
+//     .replace(/\./g, "")
+//     .replace(/\s+/g, "-")
+//     .replace(/[^a-zA-Z0-9\-]/g, "")
+//     .toLowerCase();
+
+//   try {
+//     console.log(`Sending request for: ${fileName}.html`);
+
+//     const response = await fetch("http://localhost:5018/save-html", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({ fileName, htmlContent }),
+//     });
+
+//     const result = await response.json();
+//     console.log(result);
+
+//     // Add a delay before sending the next request
+//     await delay(1000); // Wait 1 second before the next request
+//   } catch (error) {
+//     console.error("Error saving file:", error);
+//   }
+// }
+  
+//     alert("All HTML files saved successfully!");
+//   };
+  
+//   const generateHtmlPages = () => {
+//       if (excelData.length === 0) {
+//         alert("No data to generate HTML pages. Please upload an Excel file.");
+//         return;
+//       }
+
+//       excelData.forEach((row, index) => {
+//         const htmlContent = generateHTMLContent(row); // Generate HTML for the row
+//         let fileName = row["Title"] || `page-${index + 1}`; // Use the Title column or a default name
+//         const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+//    // Clean the file name: replace spaces with hyphens and remove unwanted characters
+//    fileName = fileName
+//    .normalize("NFD")
+//    .replace(/[\u0300-\u036f]/g, "")
+//    .replace(/\./g, "")
+//    .replace(/\s+/g, "-")
+//    .replace(/[^a-zA-Z0-9\-]/g, "")
+//    .toLowerCase();
+
+//  const fileNameWithExtension = `${fileName}.html`;
+//         saveAs(blob, fileNameWithExtension);
+//       });
+
+//       alert("HTML pages generated successfully!");
+//     };
+
+  // const generateHtmlPages = async () => {
+  //   if (excelData.length === 0) {
+  //     alert("No data to generate HTML pages. Please upload an Excel file.");
+  //     return;
+  //   }
+
+  //   const zip = new JSZip(); // Initialize a new ZIP file
+  //   const folder = zip.folder("Generated_HTML_Files"); // Create a folder inside the ZIP
+
+  //   excelData.forEach((row, index) => {
+  //     const htmlContent = generateHTMLContent(row); // Generate HTML for the row
+  //     let fileName = row["Title"] || `page-${index + 1}`; // Use the Title column or a default name
+
+  //     // Clean the file name: replace spaces with hyphens and remove unwanted characters
+  //     fileName = fileName
+  //       .normalize("NFD")
+  //       .replace(/[\u0300-\u036f]/g, "")
+  //       .replace(/\./g, "")
+  //       .replace(/\s+/g, "-")
+  //       .replace(/[^a-zA-Z0-9\-]/g, "")
+  //       .toLowerCase();
+
+  //     const fileNameWithExtension = `${fileName}.html`;
+
+  //     // Add the file to the ZIP folder
+  //     folder.file(fileNameWithExtension, htmlContent);
+  //   });
+
+  //   // Generate the ZIP file and save it
+  //   zip
+  //     .generateAsync({ type: "blob" })
+  //     .then((content) => {
+  //       saveAs(content, "Generated_HTML_Files.zip"); // Save the ZIP file with a default name
+  //       alert("ZIP file with HTML pages generated successfully!");
+  //     })
+  //     .catch((error) => {
+  //       console.error("Error creating ZIP file:", error);
+  //       alert("An error occurred while generating the ZIP file.");
+  //     });
+  // };
 
   const handlePreview = (row) => {
     let filledTemplate = htmlTemplate;

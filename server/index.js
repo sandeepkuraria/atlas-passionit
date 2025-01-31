@@ -1,12 +1,18 @@
-const fs = require("fs");
+const fs = require("fs-extra");
+// const fs = require("fs");
 const express = require("express");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: true }));
+// app.use(express.json({ limit: "100mb" }));
+// app.use(express.urlencoded({ limit: "100mb", extended: true }));
+app.use(express.json({ limit: "300mb" }));
+app.use(express.urlencoded({ limit: "300mb", extended: true }));
+app.use(bodyParser.json({ limit: "300mb" }));
 app.use(cors());
 require("dotenv").config();
 const crypto = require("crypto");
@@ -15,6 +21,7 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const cheerio = require("cheerio");
+
 
 // PostgreSQL Connection
 const port = process.env.PORT; // Choose your desired port
@@ -260,68 +267,130 @@ app.post("/startup-api/verify-otp", async (req, res) => {
 
 // ***********************update sitmap.xml*************************************
 
-// Function to update sitemap.xml when a new file is added
-function updateSitemap(newFileName) {
-  const sitemapPath = path.join(
-    __dirname,
-    "../public/sitemap.xml"
-  );
-  const htmlPagesPath = path.join(
-    __dirname,
-    "../public/html-pages"
-  );
+const sitemapPath = path.join(__dirname, "../public/sitemap.xml");
+const htmlPagesPath = path.join(__dirname, "../public/html-pages");
+const SITE_URL = "https://www.atlas.passionit.com/html-pages";
 
-  // Check if the new file is an HTML file in the 'html-pages' directory
-  if (
-    newFileName.endsWith(".html") &&
-    fs.existsSync(path.join(htmlPagesPath, newFileName))
-  ) {
-    // Generate the new <url> entry for the sitemap
-    const newUrlEntry = `
+// Function to update sitemap with only the changed file
+function updateSitemap(newFileName) {
+    if (!newFileName.endsWith(".html")) return;
+
+    const filePath = path.join(htmlPagesPath, newFileName);
+    if (!fs.existsSync(filePath)) return;
+
+    const fileUrl = `${SITE_URL}/${newFileName}`;
+    const lastMod = new Date().toISOString().split("T")[0];
+
+    console.log(`🔄 Updating sitemap for: ${newFileName}`);
+
+    let sitemapContent = "";
+    
+    // Check if sitemap exists, otherwise create a new one
+    if (fs.existsSync(sitemapPath)) {
+        sitemapContent = fs.readFileSync(sitemapPath, "utf-8");
+    } else {
+        console.log("⚠️ Sitemap not found, creating a new one...");
+        sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>`;
+    }
+
+    // If the file already exists in the sitemap, update its lastmod
+    if (sitemapContent.includes(fileUrl)) {
+        console.log(`🟡 File already in sitemap, updating timestamp: ${lastMod}`);
+        sitemapContent = sitemapContent.replace(
+            new RegExp(`(<loc>${fileUrl}</loc>\\s*<lastmod>)([^<]+)(</lastmod>)`),
+            `$1${lastMod}$3`
+        );
+    } else {
+        console.log(`🟢 Adding new file to sitemap: ${newFileName}`);
+        const newEntry = `
     <url>
-      <loc>https://www.atlas.passionit.com/html-pages/${newFileName}</loc>
-      <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-      <changefreq>monthly</changefreq>
-      <priority>0.9</priority>
+        <loc>${fileUrl}</loc>
+        <lastmod>${lastMod}</lastmod>
+        <changefreq>monthly</changefreq>
+        <priority>0.9</priority>
     </url>`;
 
-    // Read the existing sitemap
-    fs.readFile(sitemapPath, "utf-8", (err, data) => {
-      if (err) {
-        console.error("Error reading sitemap.xml:", err);
-        return;
-      }
+        // Insert new entry before closing </urlset>
+        sitemapContent = sitemapContent.replace("</urlset>", newEntry + "\n</urlset>");
+    }
 
-      // Check if the <urlset> already contains the entry for this file
-      if (!data.includes(newFileName)) {
-        // Insert the new entry before closing </urlset>
-        const updatedSitemap = data.replace(
-          "</urlset>",
-          newUrlEntry + "\n</urlset>"
-        );
-
-        // Write the updated sitemap back to the file
-        fs.writeFile(sitemapPath, updatedSitemap, "utf-8", (err) => {
-          if (err) {
-            console.error("Error updating sitemap.xml:", err);
-          } else {
-            console.log(`Sitemap updated with ${newFileName}`);
-          }
-        });
-      }
-    });
-  }
+    // Write the updated sitemap back to the file
+    fs.writeFileSync(sitemapPath, sitemapContent, "utf-8");
+    console.log("✅ Sitemap updated successfully!");
 }
 
-// Example: Call this function when a new file is added to html-pages
-fs.watch(
-  path.join(__dirname, "../public/html-pages"),
-  (eventType, filename) => {
+// Watch for changes in the html-pages folder and update sitemap incrementally
+fs.watch(htmlPagesPath, { persistent: true, recursive: false }, (eventType, filename) => {
     if (eventType === "rename" && filename) {
-      updateSitemap(filename);
+        updateSitemap(filename);
     }
-  }
-);
+});
+
+// Initial log to confirm the script is running
+console.log("🚀 Sitemap updater is running...");
+
+// // Function to update sitemap.xml when a new file is added
+// function updateSitemap(newFileName) {
+//   const sitemapPath = path.join(
+//     __dirname,
+//     "../public/sitemap.xml"
+//   );
+//   const htmlPagesPath = path.join(
+//     __dirname,
+//     "../public/html-pages"
+//   );
+
+//   // Check if the new file is an HTML file in the 'html-pages' directory
+//   if (
+//     newFileName.endsWith(".html") &&
+//     fs.existsSync(path.join(htmlPagesPath, newFileName))
+//   ) {
+//     // Generate the new <url> entry for the sitemap
+//     const newUrlEntry = `
+//     <url>
+//       <loc>https://www.atlas.passionit.com/html-pages/${newFileName}</loc>
+//       <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
+//       <changefreq>monthly</changefreq>
+//       <priority>0.9</priority>
+//     </url>`;
+
+//     // Read the existing sitemap
+//     fs.readFile(sitemapPath, "utf-8", (err, data) => {
+//       if (err) {
+//         console.error("Error reading sitemap.xml:", err);
+//         return;
+//       }
+
+//       // Check if the <urlset> already contains the entry for this file
+//       if (!data.includes(newFileName)) {
+//         // Insert the new entry before closing </urlset>
+//         const updatedSitemap = data.replace(
+//           "</urlset>",
+//           newUrlEntry + "\n</urlset>"
+//         );
+
+//         // Write the updated sitemap back to the file
+//         fs.writeFileSync(sitemapPath, updatedSitemap, "utf-8", (err) => {
+//           if (err) {
+//             console.error("Error updating sitemap.xml:", err);
+//           } else {
+//             console.log(`Sitemap updated with ${newFileName}`);
+//           }
+//         });
+//       }
+//     });
+//   }
+// }
+
+// // Example: Call this function when a new file is added to html-pages
+// fs.watch(
+//   path.join(__dirname, "../public/html-pages"),
+//   (eventType, filename) => {
+//     if (eventType === "rename" && filename) {
+//       updateSitemap(filename);
+//     }
+//   }
+// );
 /****************************************************************************************************************************** */
 
 // API to fetch the dateModified from an HTML file
@@ -367,6 +436,148 @@ app.post("/atlas-api/get-date-modified", (req, res) => {
   }
 });
 
+/**********************************************************saving html pages******************************************************************** */
+// Define the folder where HTML files should be saved (inside frontend)
+// const saveFolderPath = path.join(__dirname, "../public/html-pages"); 
+
+// // Ensure the folder exists
+// if (!fs.existsSync(saveFolderPath)) {
+//     fs.mkdirSync(saveFolderPath, { recursive: true });
+// }
+
+// app.post("/save-html", async (req, res) => {
+//     try {
+//         const { fileName, htmlContent } = req.body;
+//         if (!fileName || !htmlContent) {
+//             return res.status(400).json({ message: "Missing fileName or htmlContent" });
+//         }
+
+//         const sanitizedFileName = fileName
+//         .normalize("NFD")
+//         .replace(/[\u0300-\u036f]/g, "")
+//         .replace(/\./g, "")
+//         .replace(/\s+/g, "-")
+//         .replace(/[^a-zA-Z0-9\-]/g, "")
+//         .toLowerCase();
+//         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+
+//         console.log(`Saving file as: ${filePath}`);
+
+//         await fs.promises.writeFile(filePath, htmlContent, "utf8");
+
+//         res.json({ success: true, message: `File saved: ${filePath}` });
+//     } catch (error) {
+//         console.error("Error saving file:", error);
+//         res.status(500).json({ success: false, message: "Error saving file", error });
+//     }
+// });
+
+// const saveFolderPath = (__dirname, "../public/html-pages");
+const saveFolderPath = path.resolve(__dirname, "../public/html-pages");
+
+// // Ensure the folder exists
+// if (!fs.existsSync(saveFolderPath)) {
+//     fs.mkdirSync(saveFolderPath, { recursive: true });
+// }
+
+// Ensure the folder exists once at startup
+fs.ensureDir(saveFolderPath)
+    .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
+    .catch((err) => console.error("❌ Error ensuring folder:", err));
+    
+  //   app.post("/save-html", async (req, res) => {
+  //     try {
+  //         const { fileName, htmlContent } = req.body;
+  //         console.log(`➡️ Received request to save: ${fileName}.html`);
+  
+  //         if (!fileName || !htmlContent) {
+  //             return res.status(400).json({ message: "Missing fileName or htmlContent" });
+  //         }
+  
+  //         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
+  //         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+  
+  //         console.log(`📂 Saving file as: ${filePath}`);
+  //         await fs.writeFile(filePath, htmlContent, "utf8");
+  //         console.log(`✅ File successfully saved: ${filePath}`);
+  
+  //         res.json({ success: true, message: `File saved: ${filePath}` });
+  //     } catch (error) {
+  //         console.error("❌ Error saving file:", error);
+  //         res.status(500).json({ success: false, message: "Error saving file", error });
+  //     }
+  // });
+  
+  app.post("/save-html", async (req, res) => {
+    try {
+        const { fileName, htmlContent } = req.body;
+        console.log(`➡️ Received request to save: ${fileName}.html`);
+
+        if (!fileName || !htmlContent) {
+            return res.status(400).json({ message: "Missing fileName or htmlContent" });
+        }
+
+        const sanitizedFileName = fileName
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\./g, "")
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9\-]/g, "")
+        .toLowerCase();
+
+        const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+
+        if (fs.existsSync(filePath)) {
+            // Read the existing file content
+            const existingContent = await fs.readFile(filePath, "utf8");
+
+            if (existingContent.trim() === htmlContent.trim()) {
+                console.log(`✅ No changes, file already up to date: ${filePath}`);
+                return res.json({ success: true, message: "File already up to date", filePath });
+            } else {
+                // Update file if content is different
+                await fs.writeFile(filePath, htmlContent, "utf8");
+                console.log(`🔄 Updated file: ${filePath}`);
+                return res.json({ success: true, message: "File updated successfully", filePath });
+            }
+        } else {
+            // Create new file if it does not exist
+            await fs.writeFile(filePath, htmlContent, "utf8");
+            console.log(`🆕 Created new file: ${filePath}`);
+            return res.json({ success: true, message: "File created successfully", filePath });
+        }
+    } catch (error) {
+        console.error("❌ Error saving file:", error);
+        res.status(500).json({ success: false, message: "Error saving file", error });
+    }
+});
+// API Endpoint to save HTML files
+// app.post("/save-html", async (req, res) => {
+//     try {
+//         const { fileName, htmlContent } = req.body;
+//         if (!fileName || !htmlContent) {
+//             return res.status(400).json({ message: "Missing fileName or htmlContent" });
+//         }
+
+//         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
+//         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+//         console.log(`Saving file as: ${filePath}`);
+        
+//           // Ensure the folder exists before writing each file (optional but extra safe)
+//           await fs.ensureDir(saveFolderPath);
+          
+//         // await fs.promises.writeFile(filePath, htmlContent, "utf8");
+//         // fs.writeFileSync(filePath, htmlContent, "utf8");
+// // Save file with fs-extra
+// await fs.writeFile(filePath, htmlContent, "utf8");
+// console.log(`✅ File successfully saved: ${filePath}`);
+
+//         res.json({ success: true, message: `File saved: ${filePath}` });
+//     } catch (error) {
+//         console.error("Error saving file:", error);
+//         res.status(500).json({success: false, message: "Error saving file", error });
+//     }
+// });
 /****************************************************************************************************************************** */
 
 app.listen(port, () => {
