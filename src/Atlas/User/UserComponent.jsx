@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom";
 import * as API from "../Endpoint/Endpoint";
 import "./Popup.css"; // Add styles for the popup
 import ExcelLoad from "../Component/ExcelLoad";
+// import NewsAnalyticsExcelLoad from "../Component/NewsAnalyticsExcelLoad";
+import UploadNewsExcel from "../Component/UploadNewsExcel";
 
 const Dimensions = ({ label, value, onChange }) => (
   <div
@@ -71,10 +73,12 @@ const AddEditComponent = () => {
   const [startups, setStartups] = useState("");
   const [advertisementGallery, setAdvertisementGallery] = useState("");
   const [showPopup, setShowPopup] = useState(false);
-
+  const [showEntitiesPopup, setShowEntitiesPopup] = useState(false);
+  const [showNewsPopup, setShowNewsPopup] = useState(false);
+  
   const togglePopup = () => setShowPopup(!showPopup);
   
-  const navigate = useNavigate;
+  const navigate = useNavigate();
 
   const [passionDimensions, setPassionDimensions] = useState([
     { name: "Probing", description: "" },
@@ -232,19 +236,30 @@ const AddEditComponent = () => {
       <Navbar />
       <div className="container">
         {/* Excel sheet loading component */}
+        <div className="flex justify-start">
+
       <div>
-          <button onClick={togglePopup}>Open Excel Loader</button>
- 
-          {showPopup && (
-            <div className="popup-overlay">
-              <div className="popup-content">
-                <button className="close-button" onClick={togglePopup}>
-                  &times;
-                </button>
-                <ExcelLoad />
-              </div>
-            </div>
-          )}
+      <button onClick={() => setShowEntitiesPopup(!showEntitiesPopup)} className="my-3 mx-3">Entities</button>
+{showEntitiesPopup && (
+  <div className="popup-overlay">
+    <div className="popup-content">
+      <button className="close-button" onClick={() => setShowEntitiesPopup(false)}>&times;</button>
+      <ExcelLoad />
+    </div>
+  </div>
+)}
+        </div>
+      <div>
+      <button onClick={() => setShowNewsPopup(!showNewsPopup)} className="my-3 mx-3">News Analytics</button>
+{showNewsPopup && (
+  <div className="popup-overlay">
+    <div className="popup-content">
+      <button className="close-button" onClick={() => setShowNewsPopup(false)}>&times;</button>
+      <UploadNewsExcel />
+    </div>
+  </div>
+)}
+        </div>
         </div>
 
         <div className="form-container">

@@ -1,15 +1,11 @@
 const fs = require("fs-extra");
-// const fs = require("fs");
+const multer = require("multer");
 const express = require("express");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const app = express();
-// app.use(express.json());
-// app.use(express.urlencoded({ extended: true }));
-// app.use(express.json({ limit: "100mb" }));
-// app.use(express.urlencoded({ limit: "100mb", extended: true }));
 app.use(express.json({ limit: "300mb" }));
 app.use(express.urlencoded({ limit: "300mb", extended: true }));
 app.use(bodyParser.json({ limit: "300mb" }));
@@ -21,7 +17,7 @@ const path = require("path");
 const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const cheerio = require("cheerio");
-
+const xlsx = require("xlsx");
 
 // PostgreSQL Connection
 const port = process.env.PORT; // Choose your desired port
@@ -273,36 +269,36 @@ const SITE_URL = "https://www.atlas.passionit.com/html-pages";
 
 // Function to update sitemap with only the changed file
 function updateSitemap(newFileName) {
-    if (!newFileName.endsWith(".html")) return;
+  if (!newFileName.endsWith(".html")) return;
 
-    const filePath = path.join(htmlPagesPath, newFileName);
-    if (!fs.existsSync(filePath)) return;
+  const filePath = path.join(htmlPagesPath, newFileName);
+  if (!fs.existsSync(filePath)) return;
 
-    const fileUrl = `${SITE_URL}/${newFileName}`;
-    const lastMod = new Date().toISOString().split("T")[0];
+  const fileUrl = `${SITE_URL}/${newFileName}`;
+  const lastMod = new Date().toISOString().split("T")[0];
 
-    console.log(`🔄 Updating sitemap for: ${newFileName}`);
+  console.log(`🔄 Updating sitemap for: ${newFileName}`);
 
-    let sitemapContent = "";
-    
-    // Check if sitemap exists, otherwise create a new one
-    if (fs.existsSync(sitemapPath)) {
-        sitemapContent = fs.readFileSync(sitemapPath, "utf-8");
-    } else {
-        console.log("⚠️ Sitemap not found, creating a new one...");
-        sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>`;
-    }
+  let sitemapContent = "";
 
-    // If the file already exists in the sitemap, update its lastmod
-    if (sitemapContent.includes(fileUrl)) {
-        console.log(`🟡 File already in sitemap, updating timestamp: ${lastMod}`);
-        sitemapContent = sitemapContent.replace(
-            new RegExp(`(<loc>${fileUrl}</loc>\\s*<lastmod>)([^<]+)(</lastmod>)`),
-            `$1${lastMod}$3`
-        );
-    } else {
-        console.log(`🟢 Adding new file to sitemap: ${newFileName}`);
-        const newEntry = `
+  // Check if sitemap exists, otherwise create a new one
+  if (fs.existsSync(sitemapPath)) {
+    sitemapContent = fs.readFileSync(sitemapPath, "utf-8");
+  } else {
+    console.log("⚠️ Sitemap not found, creating a new one...");
+    sitemapContent = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n</urlset>`;
+  }
+
+  // If the file already exists in the sitemap, update its lastmod
+  if (sitemapContent.includes(fileUrl)) {
+    console.log(`🟡 File already in sitemap, updating timestamp: ${lastMod}`);
+    sitemapContent = sitemapContent.replace(
+      new RegExp(`(<loc>${fileUrl}</loc>\\s*<lastmod>)([^<]+)(</lastmod>)`),
+      `$1${lastMod}$3`
+    );
+  } else {
+    console.log(`🟢 Adding new file to sitemap: ${newFileName}`);
+    const newEntry = `
     <url>
         <loc>${fileUrl}</loc>
         <lastmod>${lastMod}</lastmod>
@@ -310,87 +306,32 @@ function updateSitemap(newFileName) {
         <priority>0.9</priority>
     </url>`;
 
-        // Insert new entry before closing </urlset>
-        sitemapContent = sitemapContent.replace("</urlset>", newEntry + "\n</urlset>");
-    }
+    // Insert new entry before closing </urlset>
+    sitemapContent = sitemapContent.replace(
+      "</urlset>",
+      newEntry + "\n</urlset>"
+    );
+  }
 
-    // Write the updated sitemap back to the file
-    fs.writeFileSync(sitemapPath, sitemapContent, "utf-8");
-    console.log("✅ Sitemap updated successfully!");
+  // Write the updated sitemap back to the file
+  fs.writeFileSync(sitemapPath, sitemapContent, "utf-8");
+  console.log("✅ Sitemap updated successfully!");
 }
 
 // Watch for changes in the html-pages folder and update sitemap incrementally
-fs.watch(htmlPagesPath, { persistent: true, recursive: false }, (eventType, filename) => {
+fs.watch(
+  htmlPagesPath,
+  { persistent: true, recursive: false },
+  (eventType, filename) => {
     if (eventType === "rename" && filename) {
-        updateSitemap(filename);
+      updateSitemap(filename);
     }
-});
+  }
+);
 
 // Initial log to confirm the script is running
 console.log("🚀 Sitemap updater is running...");
 
-// // Function to update sitemap.xml when a new file is added
-// function updateSitemap(newFileName) {
-//   const sitemapPath = path.join(
-//     __dirname,
-//     "../public/sitemap.xml"
-//   );
-//   const htmlPagesPath = path.join(
-//     __dirname,
-//     "../public/html-pages"
-//   );
-
-//   // Check if the new file is an HTML file in the 'html-pages' directory
-//   if (
-//     newFileName.endsWith(".html") &&
-//     fs.existsSync(path.join(htmlPagesPath, newFileName))
-//   ) {
-//     // Generate the new <url> entry for the sitemap
-//     const newUrlEntry = `
-//     <url>
-//       <loc>https://www.atlas.passionit.com/html-pages/${newFileName}</loc>
-//       <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
-//       <changefreq>monthly</changefreq>
-//       <priority>0.9</priority>
-//     </url>`;
-
-//     // Read the existing sitemap
-//     fs.readFile(sitemapPath, "utf-8", (err, data) => {
-//       if (err) {
-//         console.error("Error reading sitemap.xml:", err);
-//         return;
-//       }
-
-//       // Check if the <urlset> already contains the entry for this file
-//       if (!data.includes(newFileName)) {
-//         // Insert the new entry before closing </urlset>
-//         const updatedSitemap = data.replace(
-//           "</urlset>",
-//           newUrlEntry + "\n</urlset>"
-//         );
-
-//         // Write the updated sitemap back to the file
-//         fs.writeFileSync(sitemapPath, updatedSitemap, "utf-8", (err) => {
-//           if (err) {
-//             console.error("Error updating sitemap.xml:", err);
-//           } else {
-//             console.log(`Sitemap updated with ${newFileName}`);
-//           }
-//         });
-//       }
-//     });
-//   }
-// }
-
-// // Example: Call this function when a new file is added to html-pages
-// fs.watch(
-//   path.join(__dirname, "../public/html-pages"),
-//   (eventType, filename) => {
-//     if (eventType === "rename" && filename) {
-//       updateSitemap(filename);
-//     }
-//   }
-// );
 /****************************************************************************************************************************** */
 
 // API to fetch the dateModified from an HTML file
@@ -401,12 +342,14 @@ app.post("/atlas-api/get-date-modified", (req, res) => {
     return res.status(400).json({ error: "Title is required" });
   }
 
-  const fileName = title.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\./g, "").replace(/\s+/g, "-") + ".html";
-  const filePath = path.join(
-    __dirname,
-    "../public/html-pages",
-    fileName
-  );
+  const fileName =
+    title
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\./g, "")
+      .replace(/\s+/g, "-") + ".html";
+  const filePath = path.join(__dirname, "../public/html-pages", fileName);
 
   // Check if the file exists
   if (!fs.existsSync(filePath)) {
@@ -437,42 +380,8 @@ app.post("/atlas-api/get-date-modified", (req, res) => {
 });
 
 /**********************************************************saving html pages******************************************************************** */
+// API Endpoint to save HTML files
 // Define the folder where HTML files should be saved (inside frontend)
-// const saveFolderPath = path.join(__dirname, "../public/html-pages"); 
-
-// // Ensure the folder exists
-// if (!fs.existsSync(saveFolderPath)) {
-//     fs.mkdirSync(saveFolderPath, { recursive: true });
-// }
-
-// app.post("/save-html", async (req, res) => {
-//     try {
-//         const { fileName, htmlContent } = req.body;
-//         if (!fileName || !htmlContent) {
-//             return res.status(400).json({ message: "Missing fileName or htmlContent" });
-//         }
-
-//         const sanitizedFileName = fileName
-//         .normalize("NFD")
-//         .replace(/[\u0300-\u036f]/g, "")
-//         .replace(/\./g, "")
-//         .replace(/\s+/g, "-")
-//         .replace(/[^a-zA-Z0-9\-]/g, "")
-//         .toLowerCase();
-//         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
-
-//         console.log(`Saving file as: ${filePath}`);
-
-//         await fs.promises.writeFile(filePath, htmlContent, "utf8");
-
-//         res.json({ success: true, message: `File saved: ${filePath}` });
-//     } catch (error) {
-//         console.error("Error saving file:", error);
-//         res.status(500).json({ success: false, message: "Error saving file", error });
-//     }
-// });
-
-// const saveFolderPath = (__dirname, "../public/html-pages");
 const saveFolderPath = path.resolve(__dirname, "../public/html-pages");
 
 // // Ensure the folder exists
@@ -482,104 +391,466 @@ const saveFolderPath = path.resolve(__dirname, "../public/html-pages");
 
 // Ensure the folder exists once at startup
 fs.ensureDir(saveFolderPath)
-    .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
-    .catch((err) => console.error("❌ Error ensuring folder:", err));
-    
-  //   app.post("/save-html", async (req, res) => {
-  //     try {
-  //         const { fileName, htmlContent } = req.body;
-  //         console.log(`➡️ Received request to save: ${fileName}.html`);
-  
-  //         if (!fileName || !htmlContent) {
-  //             return res.status(400).json({ message: "Missing fileName or htmlContent" });
-  //         }
-  
-  //         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
-  //         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
-  
-  //         console.log(`📂 Saving file as: ${filePath}`);
-  //         await fs.writeFile(filePath, htmlContent, "utf8");
-  //         console.log(`✅ File successfully saved: ${filePath}`);
-  
-  //         res.json({ success: true, message: `File saved: ${filePath}` });
-  //     } catch (error) {
-  //         console.error("❌ Error saving file:", error);
-  //         res.status(500).json({ success: false, message: "Error saving file", error });
-  //     }
-  // });
-  
-  app.post("/save-html", async (req, res) => {
-    try {
-        const { fileName, htmlContent } = req.body;
-        console.log(`➡️ Received request to save: ${fileName}.html`);
+  .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
+  .catch((err) => console.error("❌ Error ensuring folder:", err));
 
-        if (!fileName || !htmlContent) {
-            return res.status(400).json({ message: "Missing fileName or htmlContent" });
-        }
+app.post("/save-html", async (req, res) => {
+  try {
+    const { fileName, htmlContent } = req.body;
+    console.log(`➡️ Received request to save: ${fileName}.html`);
 
-        const sanitizedFileName = fileName
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\./g, "")
-        .replace(/\s+/g, "-")
-        .replace(/[^a-zA-Z0-9\-]/g, "")
-        .toLowerCase();
-
-        const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
-
-        if (fs.existsSync(filePath)) {
-            // Read the existing file content
-            const existingContent = await fs.readFile(filePath, "utf8");
-
-            if (existingContent.trim() === htmlContent.trim()) {
-                console.log(`✅ No changes, file already up to date: ${filePath}`);
-                return res.json({ success: true, message: "File already up to date", filePath });
-            } else {
-                // Update file if content is different
-                await fs.writeFile(filePath, htmlContent, "utf8");
-                console.log(`🔄 Updated file: ${filePath}`);
-                return res.json({ success: true, message: "File updated successfully", filePath });
-            }
-        } else {
-            // Create new file if it does not exist
-            await fs.writeFile(filePath, htmlContent, "utf8");
-            console.log(`🆕 Created new file: ${filePath}`);
-            return res.json({ success: true, message: "File created successfully", filePath });
-        }
-    } catch (error) {
-        console.error("❌ Error saving file:", error);
-        res.status(500).json({ success: false, message: "Error saving file", error });
+    if (!fileName || !htmlContent) {
+      return res
+        .status(400)
+        .json({ message: "Missing fileName or htmlContent" });
     }
+
+    const sanitizedFileName = fileName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/\./g, "")
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9\-]/g, "")
+      .toLowerCase();
+
+    const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+
+    if (fs.existsSync(filePath)) {
+      // Read the existing file content
+      const existingContent = await fs.readFile(filePath, "utf8");
+
+      if (existingContent.trim() === htmlContent.trim()) {
+        console.log(`✅ No changes, file already up to date: ${filePath}`);
+        return res.json({
+          success: true,
+          message: "File already up to date",
+          filePath,
+        });
+      } else {
+        // Update file if content is different
+        await fs.writeFile(filePath, htmlContent, "utf8");
+        console.log(`🔄 Updated file: ${filePath}`);
+        return res.json({
+          success: true,
+          message: "File updated successfully",
+          filePath,
+        });
+      }
+    } else {
+      // Create new file if it does not exist
+      await fs.writeFile(filePath, htmlContent, "utf8");
+      console.log(`🆕 Created new file: ${filePath}`);
+      return res.json({
+        success: true,
+        message: "File created successfully",
+        filePath,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error saving file:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Error saving file", error });
+  }
 });
-// API Endpoint to save HTML files
-// app.post("/save-html", async (req, res) => {
-//     try {
-//         const { fileName, htmlContent } = req.body;
-//         if (!fileName || !htmlContent) {
-//             return res.status(400).json({ message: "Missing fileName or htmlContent" });
-//         }
 
-//         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9-_]/g, "").toLowerCase();
-//         const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
-//         console.log(`Saving file as: ${filePath}`);
+/************************************Add API to Fetch KeyGroup Data****************************************************************************************** */
+
+app.get("/atlas-api/keygroup/:name", async (req, res) => {
+  try {
+    const keygroupName = req.params.name;
+    const query = `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`;
+    const { rows } = await pool.query(query, [keygroupName]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "No data found" });
+    }
+
+    let data = rows[0];
+
+    // Parse the response to extract dimensions and scores
+    function parseResponse(responseText) {
+      let sections = responseText.split("\n\n");
+      let parsedData = {};
+
+      sections.forEach((section) => {
+        let lines = section.split("\n");
+        if (lines.length > 2 && lines[1].includes("Score")) {
+          let category = lines[0].trim();
+          parsedData[category] = [];
+
+          for (let i = 3; i < lines.length; i++) {
+            let cols = lines[i].split("|").map((col) => col.trim());
+            if (cols.length >= 4) {
+              parsedData[category].push({
+                dimension: cols[1],
+                score: parseInt(cols[2]),
+                evidence: cols[3],
+                rationale: cols[4],
+              });
+            }
+          }
+        }
+      });
+
+      return parsedData;
+    }
+
+    data.parsed_response = parseResponse(data.response);
+
+    res.json({ success: true, data });
+  } catch (error) {
+    console.error("Error fetching KeyGroup data:", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+// *********************************Generate s7.html Dynamically*******************************************
+
+app.post("/atlas-api/generate-html", async (req, res) => {
+  try {
+    const { keygroupName } = req.body;
+    if (!keygroupName) {
+      return res.status(400).json({ message: "KeyGroup name is required" });
+    }
+
+    const response = await pool.query(
+      `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`,
+      [keygroupName]
+    );
+
+    if (response.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "No data found" });
+    }
+
+    const data = response.rows[0];
+
+    function parseResponse(responseText) {
+      let sections = responseText.split("\n\n");
+      let parsedData = {};
+
+      sections.forEach((section) => {
+        let lines = section.split("\n");
+        if (lines.length > 2 && lines[1].includes("Score")) {
+          let category = lines[0].trim();
+          parsedData[category] = [];
+
+          for (let i = 3; i < lines.length; i++) {
+            let cols = lines[i].split("|").map((col) => col.trim());
+            if (cols.length >= 4) {
+              parsedData[category].push({
+                dimension: cols[1],
+                score: parseInt(cols[2]),
+                evidence: cols[3],
+                rationale: cols[4],
+              });
+            }
+          }
+        }
+      });
+
+      return parsedData;
+    }
+
+    const parsedData = parseResponse(data.response);
+
+    let htmlContent = `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>KeyGroup Report - ${data.keygroup_name}</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+      </head>
+      <body class="bg-[#fbf9ef] p-6">
+          <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
+              <h1 class="text-3xl font-bold text-[#e27c34] mb-4">KeyGroup Report</h1>
+              <h2 class="text-2xl font-semibold bg-[#d62101] text-white p-3 rounded">${data.keygroup_name} - ${data.keyword_name}</h2>
+              <p><strong>Link:</strong> <a href="${data.link}" class="text-blue-500">${data.link}</a></p>
+              <p><strong>Text:</strong> ${data.text}</p>
+              <p><strong>Date:</strong> ${data.date}</p>
+              <p><strong>Time:</strong> ${data.time}</p>`;
+
+    for (let category in parsedData) {
+      htmlContent += `
+              <h3 class="text-xl font-semibold text-[#e27c34] mt-6">${category}</h3>
+              <table class="w-full table-auto border border-collapse border-gray-300 mt-3">
+                  <thead>
+                      <tr class="bg-[#fdf2d1]">
+                          <th class="border px-4 py-2">Dimension</th>
+                          <th class="border px-4 py-2">Score</th>
+                          <th class="border px-4 py-2">Evidence</th>
+                          <th class="border px-4 py-2">Rationale</th>
+                      </tr>
+                  </thead>
+                  <tbody class="text-gray-700">`;
+
+      parsedData[category].forEach((row) => {
+        htmlContent += `
+                  <tr class="border">
+                      <td class="border px-4 py-2">${row.dimension}</td>
+                      <td class="border px-4 py-2">${row.score}</td>
+                      <td class="border px-4 py-2">${row.evidence}</td>
+                      <td class="border px-4 py-2">${row.rationale}</td>
+                  </tr>`;
+      });
+
+      htmlContent += `</tbody></table>`;
+    }
+
+    htmlContent += `
+          </div>
+      </body>
+      </html>`;
+
+    // Save the generated HTML file
+    const filePath = path.join(
+      saveFolderPath,
+      `s7-${data.keygroup_name.toLowerCase()}.html`
+    );
+    await fs.writeFile(filePath, htmlContent, "utf8");
+
+    res.json({
+      success: true,
+      message: "HTML file generated successfully",
+      filePath,
+    });
+  } catch (error) {
+    console.error("Error generating HTML:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Error generating HTML", error });
+  }
+});
+// *******************************************************************************************************
+
+// ****************************************excel file uploadad and send the data to postgre***************************************************************
+// Configure Multer for file uploads
+const upload = multer({ dest: "uploads/" });
+
+// Function to process a single row of Excel data
+const processExcelRow = (row) => {
+  return {
+    keyword_name: row["Keyword Name"],
+    link: row["Link"],
+    text: row["Text"],
+    datetime: formatDateTime(row["Date Time"]), // Now properly handles different formats
+    response: row["Response"],
+  };
+};
+
+const formatDateTime = (dateTimeStr) => {
+  if (dateTimeStr instanceof Date) return dateTimeStr; // Already a date
+
+  if (typeof dateTimeStr === "number") {
+    // Convert Excel serial number to JavaScript Date
+    const excelEpoch = new Date(1899, 11, 30); // Excel starts from 1900-01-01, but JavaScript starts from 1970
+    const millisecondsPerDay = 24 * 60 * 60 * 1000;
+    return new Date(excelEpoch.getTime() + dateTimeStr * millisecondsPerDay);
+  }
+
+  if (typeof dateTimeStr !== "string") {
+    console.error("Invalid date format:", dateTimeStr);
+    return null; // Prevent crashing
+  }
+
+  try {
+    // Handle both "YYYY-MM-DD HH:mm:ss" and "YYYY-MM-DD HH:mm:ss AM/PM"
+    return new Date(dateTimeStr);
+  } catch (error) {
+    console.error("Error parsing Date Time:", dateTimeStr, error);
+    return null;
+  }
+};
+
+app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
+    }
+
+    // Read the uploaded Excel file
+    const workbook = xlsx.readFile(req.file.path);
+    const sheetNames = workbook.SheetNames;
+
+    for (let sheetName of sheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      const jsonData = xlsx.utils.sheet_to_json(sheet);
+
+      if (jsonData.length === 0) continue;
+
+      // Insert KeyGroup (if not exists)
+      let keygroupResult = await pool.query(
+        "INSERT INTO keygroups (keygroup_name) VALUES ($1) ON CONFLICT (keygroup_name) DO NOTHING RETURNING keygroup_id",
+        [sheetName]
+      );
+
+      const keygroupId =
+        keygroupResult.rows.length > 0
+          ? keygroupResult.rows[0].keygroup_id
+          : (
+              await pool.query(
+                "SELECT keygroup_id FROM keygroups WHERE keygroup_name = $1",
+                [sheetName]
+              )
+            ).rows[0].keygroup_id;
+
+      for (let row of jsonData) {
+        if (
+          !row["Keyword Name"] ||
+          !row["Link"] ||
+          !row["Text"] ||
+          !row["Response"]
+        )
+          continue;
+
+        // Process row
+        const { keyword_name, link, text, datetime, response } =
+          processExcelRow(row);
+
+        // Insert Keyword (if not exists)
+        let keywordResult = await pool.query(
+          "INSERT INTO keywords (keygroup_id, keyword_name) VALUES ($1, $2) ON CONFLICT (keygroup_id, keyword_name) DO NOTHING RETURNING keyword_id",
+          [keygroupId, keyword_name]
+        );
+
+        const keywordId =
+          keywordResult.rows.length > 0
+            ? keywordResult.rows[0].keyword_id
+            : (
+                await pool.query(
+                  "SELECT keyword_id FROM keywords WHERE keygroup_id = $1 AND keyword_name = $2",
+                  [keygroupId, keyword_name]
+                )
+              ).rows[0].keyword_id;
+
+        // Insert News Article
+        const articleResult = await pool.query(
+          "INSERT INTO news_articles (keyword_id, link, text, datetime, response) VALUES ($1, $2, $3, $4, $5) RETURNING article_id",
+          [keywordId, link, text, datetime, response]
+        );
+
+        const articleId = articleResult.rows[0].article_id;
+
+        // Parse Response to extract Dimensions
+        // const parsedDimensions = parseResponse(response);
+        // console.log("✅ Extracted Dimensions:", parsedDimensions);
+        const parsedDimensions = parseResponse(response);
+        console.log("✅ Extracted Dimensions:", JSON.stringify(parsedDimensions, null, 2));
         
-//           // Ensure the folder exists before writing each file (optional but extra safe)
-//           await fs.ensureDir(saveFolderPath);
-          
-//         // await fs.promises.writeFile(filePath, htmlContent, "utf8");
-//         // fs.writeFileSync(filePath, htmlContent, "utf8");
-// // Save file with fs-extra
-// await fs.writeFile(filePath, htmlContent, "utf8");
-// console.log(`✅ File successfully saved: ${filePath}`);
+        for (let {
+          category,
+          dimension,
+          score,
+          evidence,
+          rationale,
+        } of parsedDimensions) {
+          await pool.query(
+            "INSERT INTO dimensions (article_id, category, dimension_name, score, evidence, rationale) VALUES ($1, $2, $3, $4, $5, $6)",
+            [articleId, category, dimension, score, evidence, rationale]
+          );
+        }
+      }
+    }
 
-//         res.json({ success: true, message: `File saved: ${filePath}` });
-//     } catch (error) {
-//         console.error("Error saving file:", error);
-//         res.status(500).json({success: false, message: "Error saving file", error });
-//     }
-// });
-/****************************************************************************************************************************** */
+    res
+      .status(200)
+      .json({ success: true, message: "Excel data processed successfully!" });
+  } catch (error) {
+    console.error("Error processing Excel:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Error processing Excel file", error });
+  }
+});
+
+// Function to Parse Response into Dimensions
+function parseResponse(responseText) {
+  let parsedData = [];
+
+  // Split response into sections using "Dimensions" as a delimiter
+  let sections = responseText.split(/\n(?=[A-Za-z\s]+Dimensions)/g);
+
+  sections.forEach(section => {
+      let lines = section.trim().split("\n").map(line => line.trim()).filter(line => line);
+
+      if (lines.length < 4) return; // Skip invalid sections
+
+      let category = lines[0].replace(":", "").trim(); // Extract category name
+      if (!category.toLowerCase().includes("dimensions")) return; // Ensure it's a valid category
+
+      console.log(`🟢 Processing Category: ${category}`);
+
+      // Locate the start of the table dynamically
+      let tableStartIndex = lines.findIndex(line => line.includes("| Dimension | Score (1-10) | Evidence Found | Rationale for Score |"));
+      if (tableStartIndex === -1) return; // Skip if no valid table found
+      tableStartIndex += 2; // Move to first data row
+
+      // Extract table rows
+      for (let i = tableStartIndex; i < lines.length; i++) {
+          let cols = lines[i].split("|").map(col => col.trim()).filter(col => col); // Split into columns
+
+          if (cols.length >= 4 && !isNaN(parseInt(cols[1]))) { // Ensure row has a valid score
+              parsedData.push({
+                  category: category, // Example: "Passion Dimensions"
+                  dimension: cols[0], // Example: "Probing"
+                  score: parseInt(cols[1]), // Convert score to number
+                  evidence: cols[2].replace(/["¹']/g, "").trim() || "N/A", // Remove quotes and special characters
+                  rationale: cols[3].replace(/["¹']/g, "").trim() || "N/A" // Remove quotes and special characters
+              });
+          }
+      }
+  });
+
+  console.log("✅ Parsed Data:", JSON.stringify(parsedData, null, 2));
+  return parsedData;
+}
+
+
+
+
+
+// *******************************************************************************************************
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
+
+// ******************************db create tables queries for atlas*************************
+// CREATE TABLE keygroups (
+//   keygroup_id SERIAL PRIMARY KEY,
+//   keygroup_name TEXT UNIQUE NOT NULL,
+//   created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE keywords (
+//   keyword_id SERIAL PRIMARY KEY,
+//   keygroup_id INT REFERENCES keygroups(keygroup_id),
+//   keyword_name TEXT NOT NULL,
+//   UNIQUE (keygroup_id, keyword_name),
+//   created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE news_articles (
+//   article_id SERIAL PRIMARY KEY,
+//   keyword_id INT REFERENCES keywords(keyword_id),
+//   link TEXT NOT NULL,
+//   text TEXT NOT NULL,
+//   date DATE NOT NULL,
+//   time TIME NOT NULL,
+//   response TEXT NOT NULL,
+//   created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE dimensions (
+//   dimension_id SERIAL PRIMARY KEY,
+//   article_id INT REFERENCES news_articles(article_id),
+//   category TEXT NOT NULL,
+//   dimension_name TEXT NOT NULL,
+//   score INT NOT NULL CHECK (score BETWEEN 1 AND 10),
+//   evidence TEXT,
+//   rationale TEXT,
+//   created_at TIMESTAMP DEFAULT NOW()
+// );
