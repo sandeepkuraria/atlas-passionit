@@ -18,6 +18,7 @@ const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
 const cheerio = require("cheerio");
 const xlsx = require("xlsx");
+const pgp = require("pg-promise")(); // Import pg-promise
 
 // PostgreSQL Connection
 const port = process.env.PORT; // Choose your desired port
@@ -622,151 +623,170 @@ app.post("/atlas-api/generate-html", async (req, res) => {
       .json({ success: false, message: "Error generating HTML", error });
   }
 });
-// *******************************************************************************************************
 
 // ****************************************excel file uploadad and send the data to postgre***************************************************************
 // Configure Multer for file uploads
 const upload = multer({ dest: "uploads/" });
 
-// Function to process a single row of Excel data
-const processExcelRow = (row) => {
-  return {
-    keyword_name: row["Keyword Name"],
-    link: row["Link"],
-    text: row["Text"],
-    datetime: formatDateTime(row["Date Time"]), // Now properly handles different formats
-    response: row["Response"],
-  };
+const newsColumns = new pgp.helpers.ColumnSet(
+  ["keyword_id", "link", "text", "date", "time", "response"],
+  { table: "news_articles" }
+);
+
+const dimensionColumns = new pgp.helpers.ColumnSet(
+  ["article_id", "category", "dimension_name", "score", "evidence", "rationale"],
+  { table: "dimensions" }
+);
+
+async function bulkInsertDimensions(dimensionsData) {
+  if (dimensionsData.length === 0) return;
+  const query = pgp.helpers.insert(dimensionsData, dimensionColumns);
+  
+  try {
+    await pool.query(query);
+    console.log("✅ Bulk Inserted Dimensions Successfully!");
+  } catch (error) {
+    console.error("🚨 Bulk Insert Dimensions Error:", error);
+  }
+}
+
+const convertExcelDate = (value) => {
+  if (!value) return "";
+
+  if (typeof value === "number" && value > 40000) { 
+    // ✅ Convert Excel serial number to JavaScript Date
+    const excelEpoch = new Date(1899, 11, 30);
+    const dateObj = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+
+    // ✅ Preserve AM/PM format if present
+    let dateStr = dateObj.toISOString().split("T")[0]; // YYYY-MM-DD
+    let timeStr = dateObj.toLocaleTimeString("en-US"); // HH:MM:SS AM/PM
+
+    return `${dateStr} ${timeStr}`.trim();
+  }
+
+  return value.toString().trim(); // ✅ Preserve original text format
 };
 
-const formatDateTime = (dateTimeStr) => {
-  if (dateTimeStr instanceof Date) return dateTimeStr; // Already a date
+const processExcelRow = (row) => {
+  const keyword_name = row["Keyword Name"]?.toString().trim() || "";
+  const link = row["Link"]?.toString().trim() || "";
+  const text = row["Text"]?.toString().trim() || "";
+  const response = row["Response"]?.toString().trim() || "";
 
-  if (typeof dateTimeStr === "number") {
-    // Convert Excel serial number to JavaScript Date
-    const excelEpoch = new Date(1899, 11, 30); // Excel starts from 1900-01-01, but JavaScript starts from 1970
-    const millisecondsPerDay = 24 * 60 * 60 * 1000;
-    return new Date(excelEpoch.getTime() + dateTimeStr * millisecondsPerDay);
-  }
+  // ✅ Ensure Date & Time Are Read Correctly
+  let date = row["Date"] || row["date"] || row["Date Time"] || "";
+  let time = row["Time"] || row["time"] || row["Date Time"] || "";
 
-  if (typeof dateTimeStr !== "string") {
-    console.error("Invalid date format:", dateTimeStr);
-    return null; // Prevent crashing
-  }
+  // ✅ Convert Excel Serial Numbers to Proper Date & Time Format
+  date = convertExcelDate(date);
+  time = convertExcelDate(time);
 
-  try {
-    // Handle both "YYYY-MM-DD HH:mm:ss" and "YYYY-MM-DD HH:mm:ss AM/PM"
-    return new Date(dateTimeStr);
-  } catch (error) {
-    console.error("Error parsing Date Time:", dateTimeStr, error);
+  if (!keyword_name || !link || !text || !response) {
+    console.warn("❌ Skipping row due to missing critical data:", row);
     return null;
   }
+
+  return { keyword_name, link, text, response, date, time };
 };
 
 app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
   try {
-    if (!req.file) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No file uploaded" });
-    }
-
-    // Read the uploaded Excel file
-    const workbook = xlsx.readFile(req.file.path);
-    const sheetNames = workbook.SheetNames;
-
-    for (let sheetName of sheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const jsonData = xlsx.utils.sheet_to_json(sheet);
-
-      if (jsonData.length === 0) continue;
-
-      // Insert KeyGroup (if not exists)
-      let keygroupResult = await pool.query(
-        "INSERT INTO keygroups (keygroup_name) VALUES ($1) ON CONFLICT (keygroup_name) DO NOTHING RETURNING keygroup_id",
-        [sheetName]
-      );
-
-      const keygroupId =
-        keygroupResult.rows.length > 0
-          ? keygroupResult.rows[0].keygroup_id
-          : (
-              await pool.query(
-                "SELECT keygroup_id FROM keygroups WHERE keygroup_name = $1",
-                [sheetName]
-              )
-            ).rows[0].keygroup_id;
-
-      for (let row of jsonData) {
-        if (
-          !row["Keyword Name"] ||
-          !row["Link"] ||
-          !row["Text"] ||
-          !row["Response"]
-        )
-          continue;
-
-        // Process row
-        const { keyword_name, link, text, datetime, response } =
-          processExcelRow(row);
-
-        // Insert Keyword (if not exists)
-        let keywordResult = await pool.query(
-          "INSERT INTO keywords (keygroup_id, keyword_name) VALUES ($1, $2) ON CONFLICT (keygroup_id, keyword_name) DO NOTHING RETURNING keyword_id",
-          [keygroupId, keyword_name]
-        );
-
-        const keywordId =
-          keywordResult.rows.length > 0
-            ? keywordResult.rows[0].keyword_id
-            : (
-                await pool.query(
-                  "SELECT keyword_id FROM keywords WHERE keygroup_id = $1 AND keyword_name = $2",
-                  [keygroupId, keyword_name]
-                )
-              ).rows[0].keyword_id;
-
-        // Insert News Article
-        const articleResult = await pool.query(
-          "INSERT INTO news_articles (keyword_id, link, text, datetime, response) VALUES ($1, $2, $3, $4, $5) RETURNING article_id",
-          [keywordId, link, text, datetime, response]
-        );
-
-        const articleId = articleResult.rows[0].article_id;
-
-        // Parse Response to extract Dimensions
-        // const parsedDimensions = parseResponse(response);
-        // console.log("✅ Extracted Dimensions:", parsedDimensions);
-        const parsedDimensions = parseResponse(response);
-        console.log("✅ Extracted Dimensions:", JSON.stringify(parsedDimensions, null, 2));
-        
-        for (let {
-          category,
-          dimension,
-          score,
-          evidence,
-          rationale,
-        } of parsedDimensions) {
-          await pool.query(
-            "INSERT INTO dimensions (article_id, category, dimension_name, score, evidence, rationale) VALUES ($1, $2, $3, $4, $5, $6)",
-            [articleId, category, dimension, score, evidence, rationale]
-          );
-        }
+      if (!req.file) {
+          return res.status(400).json({ success: false, message: "No file uploaded" });
       }
-    }
 
-    res
-      .status(200)
-      .json({ success: true, message: "Excel data processed successfully!" });
+      const workbook = xlsx.readFile(req.file.path);
+      const sheetNames = workbook.SheetNames;
+
+      let keygroupsCache = {};
+      let keywordsCache = {};
+
+      for (let sheetName of sheetNames) {
+          const sheet = workbook.Sheets[sheetName];
+          const jsonData = xlsx.utils.sheet_to_json(sheet);
+          if (jsonData.length === 0) continue;
+
+          // ✅ Get or Insert KeyGroup
+          if (!keygroupsCache[sheetName]) {
+              let keygroupResult = await pool.query(
+                  "INSERT INTO keygroups (keygroup_name) VALUES ($1) ON CONFLICT (keygroup_name) DO NOTHING RETURNING keygroup_id",
+                  [sheetName]
+              );
+
+              keygroupsCache[sheetName] =
+                  keygroupResult.rows.length > 0
+                      ? keygroupResult.rows[0].keygroup_id
+                      : (await pool.query("SELECT keygroup_id FROM keygroups WHERE keygroup_name = $1", [sheetName])).rows[0].keygroup_id;
+          }
+
+          const keygroupId = keygroupsCache[sheetName];
+
+          let insertNewsData = [];
+          let insertDimensionsData = [];
+
+          for (let row of jsonData) {
+            const processedRow = processExcelRow(row);
+            
+            if (!processedRow) continue; // Skip rows with missing data
+          
+            const { keyword_name, link, text, response, date, time } = processExcelRow(row);
+          
+            const keywordKey = `${keygroupId}-${keyword_name}`;
+          
+            if (!keywordsCache[keywordKey]) {
+              let keywordResult = await pool.query(
+                "INSERT INTO keywords (keygroup_id, keyword_name) VALUES ($1, $2) ON CONFLICT (keygroup_id, keyword_name) DO NOTHING RETURNING keyword_id",
+                [keygroupId, keyword_name]
+              );
+          
+              keywordsCache[keywordKey] =
+                keywordResult.rows.length > 0
+                  ? keywordResult.rows[0].keyword_id
+                  : (await pool.query(
+                      "SELECT keyword_id FROM keywords WHERE keygroup_id = $1 AND keyword_name = $2",
+                      [keygroupId, keyword_name]
+                    )).rows[0].keyword_id;
+            }
+          
+            const keywordId = keywordsCache[keywordKey];
+          
+            insertNewsData.push({ keyword_id: keywordId, link, text, date, time, response });
+          }
+          
+          // ✅ Bulk Insert News Articles
+          if (insertNewsData.length > 0) {
+              const newsQuery = pgp.helpers.insert(insertNewsData, newsColumns) + " RETURNING article_id";
+              const articlesResult = await pool.query(newsQuery);
+
+              articlesResult.rows.forEach(({ article_id }, index) => {
+                  const parsedDimensions = parseResponse(insertNewsData[index].response);
+                  parsedDimensions.forEach(({ category, dimension, score, evidence, rationale }) => {
+                      insertDimensionsData.push({
+                          article_id,
+                          category,
+                          dimension_name: dimension,
+                          score,
+                          evidence,
+                          rationale,
+                      });
+                  });
+              });
+
+              // ✅ Bulk Insert Dimensions
+              if (insertDimensionsData.length > 0) {
+                  await bulkInsertDimensions(insertDimensionsData);
+              }
+          }
+      }
+
+      res.status(200).json({ success: true, message: "Excel data processed successfully!" });
   } catch (error) {
-    console.error("Error processing Excel:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error processing Excel file", error });
+      console.error("🚨 Error processing Excel:", error);
+      res.status(500).json({ success: false, message: "Error processing Excel file", error });
   }
 });
 
-// Function to Parse Response into Dimensions
 function parseResponse(responseText) {
   let parsedData = [];
 
@@ -808,10 +828,6 @@ function parseResponse(responseText) {
   return parsedData;
 }
 
-
-
-
-
 // *******************************************************************************************************
 
 app.listen(port, () => {
@@ -819,38 +835,103 @@ app.listen(port, () => {
 });
 
 // ******************************db create tables queries for atlas*************************
-// CREATE TABLE keygroups (
-//   keygroup_id SERIAL PRIMARY KEY,
-//   keygroup_name TEXT UNIQUE NOT NULL,
-//   created_at TIMESTAMP DEFAULT NOW()
-// );
+// select * from dimensions;
+// select * from news_articles;
+// select * from keywords;
+// select * from keygroups;
+
+// SELECT response FROM news_articles WHERE article_id = 32;
+// SELECT category FROM dimensions WHERE dimension_id = 463;
+
+// DROP TABLE dimensions;
+// DROP TABLE news_articles;
+// DROP TABLE keywords;
+// DROP TABLE keygroups;
+
+
+
+//  CREATE TABLE keygroups (
+//    keygroup_id SERIAL PRIMARY KEY,
+//    keygroup_name TEXT UNIQUE NOT NULL,
+//    created_at TIMESTAMP DEFAULT NOW()
+//  );
 
 // CREATE TABLE keywords (
-//   keyword_id SERIAL PRIMARY KEY,
-//   keygroup_id INT REFERENCES keygroups(keygroup_id),
-//   keyword_name TEXT NOT NULL,
+//    keyword_id SERIAL PRIMARY KEY,
+//    keygroup_id INT REFERENCES keygroups(keygroup_id),
+//    keyword_name TEXT NOT NULL,
 //   UNIQUE (keygroup_id, keyword_name),
-//   created_at TIMESTAMP DEFAULT NOW()
+//    created_at TIMESTAMP DEFAULT NOW()
 // );
 
 // CREATE TABLE news_articles (
-//   article_id SERIAL PRIMARY KEY,
-//   keyword_id INT REFERENCES keywords(keyword_id),
-//   link TEXT NOT NULL,
-//   text TEXT NOT NULL,
-//   date DATE NOT NULL,
-//   time TIME NOT NULL,
-//   response TEXT NOT NULL,
-//   created_at TIMESTAMP DEFAULT NOW()
+//     article_id SERIAL PRIMARY KEY,
+//     keyword_id INT REFERENCES keywords(keyword_id),
+//     link TEXT NOT NULL,
+//     text TEXT NOT NULL,
+//     datetime TIMESTAMP NOT NULL,  -- Now stores both date & time
+//     response TEXT NOT NULL,
+//     created_at TIMESTAMP DEFAULT NOW()
 // );
 
 // CREATE TABLE dimensions (
-//   dimension_id SERIAL PRIMARY KEY,
-//   article_id INT REFERENCES news_articles(article_id),
-//   category TEXT NOT NULL,
-//   dimension_name TEXT NOT NULL,
-//   score INT NOT NULL CHECK (score BETWEEN 1 AND 10),
-//   evidence TEXT,
-//   rationale TEXT,
-//   created_at TIMESTAMP DEFAULT NOW()
+//     dimension_id SERIAL PRIMARY KEY,
+//     article_id INT REFERENCES news_articles(article_id),
+//     category TEXT NOT NULL,
+//     dimension_name TEXT NOT NULL,
+//     score INT NOT NULL CHECK (score BETWEEN 1 AND 10),
+//     evidence TEXT,
+//     rationale TEXT,
+//     created_at TIMESTAMP DEFAULT NOW()
+// );
+
+
+// *******************removed not null and refrences from ids************************
+// select * from dimensions;
+// select * from news_articles;
+// select * from keywords;
+// select * from keygroups;
+
+// SELECT response FROM news_articles WHERE article_id = 32;
+// SELECT category FROM dimensions WHERE dimension_id = 463;
+
+// DROP TABLE dimensions;
+// DROP TABLE news_articles;
+// DROP TABLE keywords;
+// DROP TABLE keygroups;
+
+// CREATE TABLE keygroups (
+//    keygroup_id SERIAL PRIMARY KEY,
+//    keygroup_name TEXT UNIQUE,
+//    created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE keywords (
+//    keyword_id SERIAL PRIMARY KEY,
+//    keygroup_id INT,
+//    keyword_name TEXT,
+//    UNIQUE (keygroup_id, keyword_name),
+//    created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE news_articles (
+//     article_id SERIAL PRIMARY KEY,
+//     keyword_id INT,
+//     link TEXT,
+//     text TEXT,
+//     date TEXT,
+//     time TEXT,
+//     response TEXT,
+//     created_at TIMESTAMP DEFAULT NOW()
+// );
+
+// CREATE TABLE dimensions (
+//     dimension_id SERIAL PRIMARY KEY,
+//     article_id INT,
+//     category TEXT,
+//     dimension_name TEXT,
+//     score INT CHECK (score BETWEEN 1 AND 10),
+//     evidence TEXT,
+//     rationale TEXT,
+//     created_at TIMESTAMP DEFAULT NOW()
 // );
