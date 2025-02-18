@@ -2106,6 +2106,7 @@ const ExcelLoad = () => {
     console.log("Updated Data Array:", updatedData);
     return updatedData;
   };
+  
   const normalizeKey = (key) =>
     key.trim().toLowerCase().replace(/ /g, "_").replace(/[()]/g, "");
 

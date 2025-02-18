@@ -395,7 +395,7 @@ fs.ensureDir(saveFolderPath)
   .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
   .catch((err) => console.error("❌ Error ensuring folder:", err));
 
-app.post("/save-html", async (req, res) => {
+app.post("/atlas-api/save-html", async (req, res) => {
   try {
     const { fileName, htmlContent } = req.body;
     console.log(`➡️ Received request to save: ${fileName}.html`);
@@ -457,172 +457,173 @@ app.post("/save-html", async (req, res) => {
 
 /************************************Add API to Fetch KeyGroup Data****************************************************************************************** */
 
-app.get("/atlas-api/keygroup/:name", async (req, res) => {
-  try {
-    const keygroupName = req.params.name;
-    const query = `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`;
-    const { rows } = await pool.query(query, [keygroupName]);
+// app.get("/atlas-api/keygroup/:name", async (req, res) => {
+//   try {
+//     const keygroupName = req.params.name;
+//     const query = `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`;
+//     const { rows } = await pool.query(query, [keygroupName]);
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, message: "No data found" });
-    }
+//     if (rows.length === 0) {
+//       return res.status(404).json({ success: false, message: "No data found" });
+//     }
 
-    let data = rows[0];
+//     let data = rows[0];
 
-    // Parse the response to extract dimensions and scores
-    function parseResponse(responseText) {
-      let sections = responseText.split("\n\n");
-      let parsedData = {};
+//     // Parse the response to extract dimensions and scores
+//     function parseResponse(responseText) {
+//       let sections = responseText.split("\n\n");
+//       let parsedData = {};
 
-      sections.forEach((section) => {
-        let lines = section.split("\n");
-        if (lines.length > 2 && lines[1].includes("Score")) {
-          let category = lines[0].trim();
-          parsedData[category] = [];
+//       sections.forEach((section) => {
+//         let lines = section.split("\n");
+//         if (lines.length > 2 && lines[1].includes("Score")) {
+//           let category = lines[0].trim();
+//           parsedData[category] = [];
 
-          for (let i = 3; i < lines.length; i++) {
-            let cols = lines[i].split("|").map((col) => col.trim());
-            if (cols.length >= 4) {
-              parsedData[category].push({
-                dimension: cols[1],
-                score: parseInt(cols[2]),
-                evidence: cols[3],
-                rationale: cols[4],
-              });
-            }
-          }
-        }
-      });
+//           for (let i = 3; i < lines.length; i++) {
+//             let cols = lines[i].split("|").map((col) => col.trim());
+//             if (cols.length >= 4) {
+//               parsedData[category].push({
+//                 dimension: cols[1],
+//                 score: parseInt(cols[2]),
+//                 evidence: cols[3],
+//                 rationale: cols[4],
+//               });
+//             }
+//           }
+//         }
+//       });
 
-      return parsedData;
-    }
+//       return parsedData;
+//     }
 
-    data.parsed_response = parseResponse(data.response);
+//     data.parsed_response = parseResponse(data.response);
 
-    res.json({ success: true, data });
-  } catch (error) {
-    console.error("Error fetching KeyGroup data:", error);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-});
+//     res.json({ success: true, data });
+//   } catch (error) {
+//     console.error("Error fetching KeyGroup data:", error);
+//     res.status(500).json({ success: false, message: "Server Error" });
+//   }
+// });
 // *********************************Generate s7.html Dynamically*******************************************
 
-app.post("/atlas-api/generate-html", async (req, res) => {
-  try {
-    const { keygroupName } = req.body;
-    if (!keygroupName) {
-      return res.status(400).json({ message: "KeyGroup name is required" });
-    }
+// app.post("/atlas-api/generate-html", async (req, res) => {
+//   try {
+//     const { keygroupName } = req.body;
+//     if (!keygroupName) {
+//       return res.status(400).json({ message: "KeyGroup name is required" });
+//     }
 
-    const response = await pool.query(
-      `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`,
-      [keygroupName]
-    );
+//     const response = await pool.query(
+//       `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`,
+//       [keygroupName]
+//     );
 
-    if (response.rows.length === 0) {
-      return res.status(404).json({ success: false, message: "No data found" });
-    }
+//     if (response.rows.length === 0) {
+//       return res.status(404).json({ success: false, message: "No data found" });
+//     }
 
-    const data = response.rows[0];
+//     const data = response.rows[0];
 
-    function parseResponse(responseText) {
-      let sections = responseText.split("\n\n");
-      let parsedData = {};
+//     function parseResponse(responseText) {
+//       let sections = responseText.split("\n\n");
+//       let parsedData = {};
 
-      sections.forEach((section) => {
-        let lines = section.split("\n");
-        if (lines.length > 2 && lines[1].includes("Score")) {
-          let category = lines[0].trim();
-          parsedData[category] = [];
+//       sections.forEach((section) => {
+//         let lines = section.split("\n");
+//         if (lines.length > 2 && lines[1].includes("Score")) {
+//           let category = lines[0].trim();
+//           parsedData[category] = [];
 
-          for (let i = 3; i < lines.length; i++) {
-            let cols = lines[i].split("|").map((col) => col.trim());
-            if (cols.length >= 4) {
-              parsedData[category].push({
-                dimension: cols[1],
-                score: parseInt(cols[2]),
-                evidence: cols[3],
-                rationale: cols[4],
-              });
-            }
-          }
-        }
-      });
+//           for (let i = 3; i < lines.length; i++) {
+//             let cols = lines[i].split("|").map((col) => col.trim());
+//             if (cols.length >= 4) {
+//               parsedData[category].push({
+//                 dimension: cols[1],
+//                 score: parseInt(cols[2]),
+//                 evidence: cols[3],
+//                 rationale: cols[4],
+//               });
+//             }
+//           }
+//         }
+//       });
 
-      return parsedData;
-    }
+//       return parsedData;
+//     }
 
-    const parsedData = parseResponse(data.response);
+//     const parsedData = parseResponse(data.response);
 
-    let htmlContent = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>KeyGroup Report - ${data.keygroup_name}</title>
-          <script src="https://cdn.tailwindcss.com"></script>
-      </head>
-      <body class="bg-[#fbf9ef] p-6">
-          <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
-              <h1 class="text-3xl font-bold text-[#e27c34] mb-4">KeyGroup Report</h1>
-              <h2 class="text-2xl font-semibold bg-[#d62101] text-white p-3 rounded">${data.keygroup_name} - ${data.keyword_name}</h2>
-              <p><strong>Link:</strong> <a href="${data.link}" class="text-blue-500">${data.link}</a></p>
-              <p><strong>Text:</strong> ${data.text}</p>
-              <p><strong>Date:</strong> ${data.date}</p>
-              <p><strong>Time:</strong> ${data.time}</p>`;
+//     let htmlContent = `
+//       <!DOCTYPE html>
+//       <html lang="en">
+//       <head>
+//           <meta charset="UTF-8">
+//           <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//           <title>KeyGroup Report - ${data.keygroup_name}</title>
+//           <script src="https://cdn.tailwindcss.com"></script>
+//       </head>
+//       <body class="bg-[#fbf9ef] p-6">
+//           <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
+//               <h1 class="text-3xl font-bold text-[#e27c34] mb-4">KeyGroup Report</h1>
+//               <h2 class="text-2xl font-semibold bg-[#d62101] text-white p-3 rounded">${data.keygroup_name} - ${data.keyword_name}</h2>
+//               <p><strong>Link:</strong> <a href="${data.link}" class="text-blue-500">${data.link}</a></p>
+//               <p><strong>Text:</strong> ${data.text}</p>
+//               <p><strong>Date:</strong> ${data.date}</p>
+//               <p><strong>Time:</strong> ${data.time}</p>`;
 
-    for (let category in parsedData) {
-      htmlContent += `
-              <h3 class="text-xl font-semibold text-[#e27c34] mt-6">${category}</h3>
-              <table class="w-full table-auto border border-collapse border-gray-300 mt-3">
-                  <thead>
-                      <tr class="bg-[#fdf2d1]">
-                          <th class="border px-4 py-2">Dimension</th>
-                          <th class="border px-4 py-2">Score</th>
-                          <th class="border px-4 py-2">Evidence</th>
-                          <th class="border px-4 py-2">Rationale</th>
-                      </tr>
-                  </thead>
-                  <tbody class="text-gray-700">`;
+//     for (let category in parsedData) {
+//       htmlContent += `
+//               <h3 class="text-xl font-semibold text-[#e27c34] mt-6">${category}</h3>
+//               <table class="w-full table-auto border border-collapse border-gray-300 mt-3">
+//                   <thead>
+//                       <tr class="bg-[#fdf2d1]">
+//                           <th class="border px-4 py-2">Dimension</th>
+//                           <th class="border px-4 py-2">Score</th>
+//                           <th class="border px-4 py-2">Evidence</th>
+//                           <th class="border px-4 py-2">Rationale</th>
+//                       </tr>
+//                   </thead>
+//                   <tbody class="text-gray-700">`;
 
-      parsedData[category].forEach((row) => {
-        htmlContent += `
-                  <tr class="border">
-                      <td class="border px-4 py-2">${row.dimension}</td>
-                      <td class="border px-4 py-2">${row.score}</td>
-                      <td class="border px-4 py-2">${row.evidence}</td>
-                      <td class="border px-4 py-2">${row.rationale}</td>
-                  </tr>`;
-      });
+//       parsedData[category].forEach((row) => {
+//         htmlContent += `
+//                   <tr class="border">
+//                       <td class="border px-4 py-2">${row.dimension}</td>
+//                       <td class="border px-4 py-2">${row.score}</td>
+//                       <td class="border px-4 py-2">${row.evidence}</td>
+//                       <td class="border px-4 py-2">${row.rationale}</td>
+//                   </tr>`;
+//       });
 
-      htmlContent += `</tbody></table>`;
-    }
+//       htmlContent += `</tbody></table>`;
+//     }
 
-    htmlContent += `
-          </div>
-      </body>
-      </html>`;
+//     htmlContent += `
+//           </div>
+//       </body>
+//       </html>`;
 
-    // Save the generated HTML file
-    const filePath = path.join(
-      saveFolderPath,
-      `s7-${data.keygroup_name.toLowerCase()}.html`
-    );
-    await fs.writeFile(filePath, htmlContent, "utf8");
+//     // Save the generated HTML file
+//     const filePath = path.join(
+//       saveFolderPath,
+//       `s7-${data.keygroup_name.toLowerCase()}.html`
+//     );
+//     await fs.writeFile(filePath, htmlContent, "utf8");
 
-    res.json({
-      success: true,
-      message: "HTML file generated successfully",
-      filePath,
-    });
-  } catch (error) {
-    console.error("Error generating HTML:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error generating HTML", error });
-  }
-});
+//     res.json({
+//       success: true,
+//       message: "HTML file generated successfully",
+//       filePath,
+//     });
+//   } catch (error) {
+//     console.error("Error generating HTML:", error);
+//     res
+//       .status(500)
+//       .json({ success: false, message: "Error generating HTML", error });
+//   }
+// });
+
 
 // ****************************************excel file uploadad and send the data to postgre***************************************************************
 // Configure Multer for file uploads
@@ -827,6 +828,64 @@ function parseResponse(responseText) {
   console.log("✅ Parsed Data:", JSON.stringify(parsedData, null, 2));
   return parsedData;
 }
+
+// ******************************popping up html page according to keygroup like Google, Donald Trump, India*************************************************************************
+// Fetch KeyGroup Data (News + Dimensions) from PostgreSQL
+app.get("/atlas-api/keygroup/:keygroupId", async (req, res) => {
+  try {
+    const { keygroupId } = req.params;
+    console.log("🔍 Fetching Data for KeyGroup ID:", keygroupId);
+
+    // Fetch News Articles for the KeyGroup
+    const newsQuery = `
+      SELECT na.*, k.keyword_name
+      FROM news_articles na
+      JOIN keywords k ON na.keyword_id = k.keyword_id
+      WHERE k.keygroup_id = $1
+      ORDER BY na.created_at DESC;
+    `;
+
+    const newsResult = await pool.query(newsQuery, [keygroupId]);
+    console.log("📊 Fetched News Articles:", newsResult.rows);
+
+    // Fetch Dimensions for the News Articles
+    const articleIds = newsResult.rows.map((article) => article.article_id);
+    console.log("🆔 Article IDs for Dimensions Fetch:", articleIds);
+
+    let dimensionsResult = [];
+
+    if (articleIds.length > 0) {
+      const dimensionQuery = `
+        SELECT d.*, na.article_id
+        FROM dimensions d
+        JOIN news_articles na ON d.article_id = na.article_id
+        WHERE na.article_id = ANY($1);
+      `;
+      dimensionsResult = await pool.query(dimensionQuery, [articleIds]);
+      console.log("📐 Fetched Dimensions:", dimensionsResult.rows);
+    }
+
+    res.status(200).json({
+      news: newsResult.rows,
+      dimensions: dimensionsResult.rows,
+    });
+  } catch (error) {
+    console.error("🚨 Error fetching KeyGroup data:", error);
+    res.status(500).json({ error: "Failed to fetch KeyGroup data." });
+  }
+});
+
+// Fetch all keygroups
+app.get("/atlas-api/keygroups", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM keygroups ORDER BY created_at DESC;");
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error("🚨 Error fetching keygroups:", error);
+    res.status(500).json({ error: "Failed to fetch keygroups." });
+  }
+});
+
 
 // *******************************************************************************************************
 

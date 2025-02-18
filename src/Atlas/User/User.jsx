@@ -10,6 +10,7 @@ import { FaEdit } from "react-icons/fa";
 import { MdDelete } from "react-icons/md";
 import Pagination from "../Component/Pagination";
 import NoDataAvailable from "../Component/NoDataAvailable";
+import KeyGroupTabs from "../Component/KeyGroupTabs";
 const User = () => {
   const [data, setData] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -88,6 +89,10 @@ const User = () => {
             </div>
           </Link>
         </div>
+        <div className="mb-4 d-flex">
+        <div className="mr-3">
+          <KeyGroupTabs />
+        </div>
         <div
           className="table-responsive mb-4 d-flex justify-content-end"
           style={{ margin: "0 auto", maxWidth: "99%" }}
@@ -149,6 +154,7 @@ const User = () => {
             />
           </div>
         )}
+        </div>
       </div>
     </div>
   );

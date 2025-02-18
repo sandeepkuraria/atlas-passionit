@@ -1,4 +1,5 @@
 import { useState } from "react";
+import * as API from "../Endpoint/Endpoint";
 
 const UploadNewsExcel = () => {
     const [file, setFile] = useState(null);
@@ -25,7 +26,7 @@ const UploadNewsExcel = () => {
         formData.append("file", file);
 
         try {
-            const response = await fetch("http://localhost:5018/atlas-api/upload-excel", {
+            const response = await fetch(`${API.BASE_URL}upload-excel`, {
                 method: "POST",
                 body: formData,
             });

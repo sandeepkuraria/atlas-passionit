@@ -2165,7 +2165,7 @@ const NewsAnalyticsExcelLoad = () => {
               }: ${fileName}.html`
             );
     
-            const response = await fetch("http://localhost:5018/save-html", {
+            const response = await fetch(`${API.BASE_URL}save-html`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ fileName, htmlContent }),
