@@ -2117,6 +2117,8 @@ const ExcelLoad = () => {
       return;
     }
 
+    console.log(`📊 Processing ${excelData.length} rows for HTML generation...`);
+
     const requests = excelData.map(async (row, index) => {
       const htmlContent = generateHTMLContent(row);
       let fileName = row["Title"] || `page-${index + 1}`;
@@ -2149,10 +2151,17 @@ const ExcelLoad = () => {
       }
     });
 
-    // await Promise.all(requests);
-
     alert("All HTML files saved successfully!");
   };
+
+  
+  
+  
+  
+  
+  
+  
+  
 
   const handlePreview = (row) => {
     let filledTemplate = htmlTemplate;

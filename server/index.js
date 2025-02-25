@@ -19,6 +19,7 @@ const jwt = require("jsonwebtoken");
 const cheerio = require("cheerio");
 const xlsx = require("xlsx");
 const pgp = require("pg-promise")(); // Import pg-promise
+// const PQueue = require("p-queue"); // Import PQueue
 
 // PostgreSQL Connection
 const port = process.env.PORT; // Choose your desired port
@@ -380,20 +381,87 @@ app.post("/atlas-api/get-date-modified", (req, res) => {
   }
 });
 
-/**********************************************************saving html pages******************************************************************** */
-// API Endpoint to save HTML files
-// Define the folder where HTML files should be saved (inside frontend)
+// /**********************************************************saving html pages******************************************************************** */
+// // API Endpoint to save HTML files
+// // Define the folder where HTML files should be saved (inside frontend)
+// const saveFolderPath = path.resolve(__dirname, "../public/html-pages");
+
+// // Ensure the folder exists once at startup
+// fs.ensureDir(saveFolderPath)
+//   .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
+//   .catch((err) => console.error("❌ Error ensuring folder:", err));
+
+// app.post("/atlas-api/save-html", async (req, res) => {
+//   try {
+//     const { fileName, htmlContent } = req.body;
+//     console.log(`➡️ Received request to save: ${fileName}.html`);
+
+//     if (!fileName || !htmlContent) {
+//       return res
+//         .status(400)
+//         .json({ message: "Missing fileName or htmlContent" });
+//     }
+
+//     const sanitizedFileName = fileName
+//       .normalize("NFD")
+//       .replace(/[\u0300-\u036f]/g, "")
+//       .replace(/\./g, "")
+//       .replace(/\s+/g, "-")
+//       .replace(/[^a-zA-Z0-9\-]/g, "")
+//       .toLowerCase();
+
+//     const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+
+//     if (fs.existsSync(filePath)) {
+//       // Read the existing file content
+//       const existingContent = await fs.readFile(filePath, "utf8");
+
+//       if (existingContent.trim() === htmlContent.trim()) {
+//         console.log(`✅ No changes, file already up to date: ${filePath}`);
+//         return res.json({
+//           success: true,
+//           message: "File already up to date",
+//           filePath,
+//         });
+//       } else {
+//         // Update file if content is different
+//         await fs.writeFile(filePath, htmlContent, "utf8");
+//         console.log(`🔄 Updated file: ${filePath}`);
+//         return res.json({
+//           success: true,
+//           message: "File updated successfully",
+//           filePath,
+//         });
+//       }
+//     } else {
+//       // Create new file if it does not exist
+//       await fs.writeFile(filePath, htmlContent, "utf8");
+//       console.log(`🆕 Created new file: ${filePath}`);
+//       return res.json({
+//         success: true,
+//         message: "File created successfully",
+//         filePath,
+//       });
+//     }
+//   } catch (error) {
+//     console.error("❌ Error saving file:", error);
+//     res
+//       .status(500)
+//       .json({ success: false, message: "Error saving file", error });
+//   }
+// });
+
+
+let queue;
+
+// Load p-queue dynamically with concurrency
+(async () => {
+  const PQueue = (await import("p-queue")).default;
+  queue = new PQueue({ concurrency: 2 }); // Increased concurrency for faster processing
+})();
+
 const saveFolderPath = path.resolve(__dirname, "../public/html-pages");
-
-// // Ensure the folder exists
-// if (!fs.existsSync(saveFolderPath)) {
-//     fs.mkdirSync(saveFolderPath, { recursive: true });
-// }
-
-// Ensure the folder exists once at startup
-fs.ensureDir(saveFolderPath)
-  .then(() => console.log("📂 Save folder is ready:", saveFolderPath))
-  .catch((err) => console.error("❌ Error ensuring folder:", err));
+fs.ensureDir(saveFolderPath).then(() => console.log("📂 Save folder is ready:", saveFolderPath));
 
 app.post("/atlas-api/save-html", async (req, res) => {
   try {
@@ -401,59 +469,38 @@ app.post("/atlas-api/save-html", async (req, res) => {
     console.log(`➡️ Received request to save: ${fileName}.html`);
 
     if (!fileName || !htmlContent) {
-      return res
-        .status(400)
-        .json({ message: "Missing fileName or htmlContent" });
+      return res.status(400).json({ message: "Missing fileName or htmlContent" });
     }
 
-    const sanitizedFileName = fileName
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/\./g, "")
-      .replace(/\s+/g, "-")
-      .replace(/[^a-zA-Z0-9\-]/g, "")
-      .toLowerCase();
+    if (!queue) {
+      return res.status(500).json({ message: "Queue is not initialized yet. Please retry." });
+    }
 
-    const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
+    await queue.add(async () => {
+      const sanitizedFileName = fileName
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\./g, "")
+        .replace(/\s+/g, "-")
+        .replace(/[^a-zA-Z0-9\-]/g, "")
+        .toLowerCase();
 
-    if (fs.existsSync(filePath)) {
-      // Read the existing file content
-      const existingContent = await fs.readFile(filePath, "utf8");
+      const filePath = path.join(saveFolderPath, `${sanitizedFileName}.html`);
 
-      if (existingContent.trim() === htmlContent.trim()) {
-        console.log(`✅ No changes, file already up to date: ${filePath}`);
-        return res.json({
-          success: true,
-          message: "File already up to date",
-          filePath,
-        });
-      } else {
-        // Update file if content is different
-        await fs.writeFile(filePath, htmlContent, "utf8");
-        console.log(`🔄 Updated file: ${filePath}`);
-        return res.json({
-          success: true,
-          message: "File updated successfully",
-          filePath,
-        });
-      }
-    } else {
-      // Create new file if it does not exist
+      console.log(`⏳ Writing file: ${filePath}`);
+      await new Promise((resolve) => setTimeout(resolve, 500)); // Simulate delay in writing
+
       await fs.writeFile(filePath, htmlContent, "utf8");
-      console.log(`🆕 Created new file: ${filePath}`);
-      return res.json({
-        success: true,
-        message: "File created successfully",
-        filePath,
-      });
-    }
+      console.log(`✅ File saved: ${filePath}`);
+    });
+
+    return res.json({ success: true, message: "File save request queued" });
   } catch (error) {
     console.error("❌ Error saving file:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error saving file", error });
+    res.status(500).json({ success: false, message: "Error saving file", error });
   }
 });
+
 
 /************************************Add API to Fetch KeyGroup Data****************************************************************************************** */
 
@@ -627,6 +674,7 @@ app.post("/atlas-api/save-html", async (req, res) => {
 
 // ****************************************excel file uploadad and send the data to postgre***************************************************************
 // Configure Multer for file uploads
+
 const upload = multer({ dest: "uploads/" });
 
 const newsColumns = new pgp.helpers.ColumnSet(

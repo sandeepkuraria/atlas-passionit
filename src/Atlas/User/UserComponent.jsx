@@ -8,7 +8,6 @@ import { useNavigate } from "react-router-dom";
 import * as API from "../Endpoint/Endpoint";
 import "./Popup.css"; // Add styles for the popup
 import ExcelLoad from "../Component/ExcelLoad";
-// import NewsAnalyticsExcelLoad from "../Component/NewsAnalyticsExcelLoad";
 import UploadNewsExcel from "../Component/UploadNewsExcel";
 
 const Dimensions = ({ label, value, onChange }) => (
