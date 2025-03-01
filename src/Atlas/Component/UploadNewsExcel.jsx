@@ -61,7 +61,7 @@ const UploadNewsExcel = () => {
                 onClick={handleUpload}
                 disabled={uploading}
                 className={`w-full py-2 px-4 rounded ${
-                    uploading ? "bg-gray-400" : "bg-blue-600 hover:bg-blue-700"
+                    uploading ? "bg-gray-400" : "bg-orange-400 hover:bg-orange-500"
                 } text-white font-semibold`}
             >
                 {uploading ? "Uploading..." : "Upload"}

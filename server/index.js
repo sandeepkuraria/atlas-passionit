@@ -504,181 +504,212 @@ app.post("/atlas-api/save-html", async (req, res) => {
 
 /************************************Add API to Fetch KeyGroup Data****************************************************************************************** */
 
-// app.get("/atlas-api/keygroup/:name", async (req, res) => {
+// const upload = multer({ dest: "uploads/" });
+
+// const newsColumns = new pgp.helpers.ColumnSet(
+//   ["keyword_id", "link", "text", "date", "time", "response"],
+//   { table: "news_articles" }
+// );
+
+// const dimensionColumns = new pgp.helpers.ColumnSet(
+//   ["article_id", "category", "dimension_name", "score", "evidence", "rationale"],
+//   { table: "dimensions" }
+// );
+
+// async function bulkInsertDimensions(dimensionsData) {
+//   if (dimensionsData.length === 0) return;
+//   const query = pgp.helpers.insert(dimensionsData, dimensionColumns);
+  
 //   try {
-//     const keygroupName = req.params.name;
-//     const query = `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`;
-//     const { rows } = await pool.query(query, [keygroupName]);
-
-//     if (rows.length === 0) {
-//       return res.status(404).json({ success: false, message: "No data found" });
-//     }
-
-//     let data = rows[0];
-
-//     // Parse the response to extract dimensions and scores
-//     function parseResponse(responseText) {
-//       let sections = responseText.split("\n\n");
-//       let parsedData = {};
-
-//       sections.forEach((section) => {
-//         let lines = section.split("\n");
-//         if (lines.length > 2 && lines[1].includes("Score")) {
-//           let category = lines[0].trim();
-//           parsedData[category] = [];
-
-//           for (let i = 3; i < lines.length; i++) {
-//             let cols = lines[i].split("|").map((col) => col.trim());
-//             if (cols.length >= 4) {
-//               parsedData[category].push({
-//                 dimension: cols[1],
-//                 score: parseInt(cols[2]),
-//                 evidence: cols[3],
-//                 rationale: cols[4],
-//               });
-//             }
-//           }
-//         }
-//       });
-
-//       return parsedData;
-//     }
-
-//     data.parsed_response = parseResponse(data.response);
-
-//     res.json({ success: true, data });
+//     await pool.query(query);
+//     console.log("✅ Bulk Inserted Dimensions Successfully!");
 //   } catch (error) {
-//     console.error("Error fetching KeyGroup data:", error);
-//     res.status(500).json({ success: false, message: "Server Error" });
+//     console.error("🚨 Bulk Insert Dimensions Error:", error);
 //   }
-// });
-// *********************************Generate s7.html Dynamically*******************************************
+// }
 
-// app.post("/atlas-api/generate-html", async (req, res) => {
+// const convertExcelDate = (value) => {
+//   if (!value) return "";
+
+//   if (typeof value === "number" && value > 40000) { 
+//     // ✅ Convert Excel serial number to JavaScript Date
+//     const excelEpoch = new Date(1899, 11, 30);
+//     const dateObj = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+
+//     // ✅ Preserve AM/PM format if present
+//     let dateStr = dateObj.toISOString().split("T")[0]; // YYYY-MM-DD
+//     let timeStr = dateObj.toLocaleTimeString("en-US"); // HH:MM:SS AM/PM
+
+//     return `${dateStr} ${timeStr}`.trim();
+//   }
+
+//   return value.toString().trim(); // ✅ Preserve original text format
+// };
+
+// const processExcelRow = (row) => {
+//   const keyword_name = row["Keyword Name"]?.toString().trim() || "";
+//   const link = row["Link"]?.toString().trim() || "";
+//   const text = row["Text"]?.toString().trim() || "";
+//   const response = row["Response"]?.toString().trim() || "";
+
+//   // ✅ Ensure Date & Time Are Read Correctly
+//   let date = row["Date"] || row["date"] || row["Date Time"]|| row["News Release Time"]|| "";
+//   let time = row["Time"] || row["time"] || row["Date Time"]|| row["Data Processing Time"]|| "";
+
+//   // ✅ Convert Excel Serial Numbers to Proper Date & Time Format
+//   date = convertExcelDate(date);
+//   time = convertExcelDate(time);
+
+//   if (!keyword_name || !link || !text || !response) {
+//     console.warn("❌ Skipping row due to missing critical data:", row);
+//     return null;
+//   }
+
+//   return { keyword_name, link, text, response, date, time };
+// };
+
+// app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
 //   try {
-//     const { keygroupName } = req.body;
-//     if (!keygroupName) {
-//       return res.status(400).json({ message: "KeyGroup name is required" });
-//     }
+//       if (!req.file) {
+//           return res.status(400).json({ success: false, message: "No file uploaded" });
+//       }
 
-//     const response = await pool.query(
-//       `SELECT * FROM keygroup_data WHERE keygroup_name = $1 ORDER BY created_at DESC LIMIT 1`,
-//       [keygroupName]
-//     );
+//       const workbook = xlsx.readFile(req.file.path);
+//       const sheetNames = workbook.SheetNames;
 
-//     if (response.rows.length === 0) {
-//       return res.status(404).json({ success: false, message: "No data found" });
-//     }
+//       let keygroupsCache = {};
+//       let keywordsCache = {};
 
-//     const data = response.rows[0];
+//       for (let sheetName of sheetNames) {
+//           const sheet = workbook.Sheets[sheetName];
+//           const jsonData = xlsx.utils.sheet_to_json(sheet);
+//           if (jsonData.length === 0) continue;
 
-//     function parseResponse(responseText) {
-//       let sections = responseText.split("\n\n");
-//       let parsedData = {};
+//           // ✅ Get or Insert KeyGroup
+//           if (!keygroupsCache[sheetName]) {
+//               let keygroupResult = await pool.query(
+//                   "INSERT INTO keygroups (keygroup_name) VALUES ($1) ON CONFLICT (keygroup_name) DO NOTHING RETURNING keygroup_id",
+//                   [sheetName]
+//               );
 
-//       sections.forEach((section) => {
-//         let lines = section.split("\n");
-//         if (lines.length > 2 && lines[1].includes("Score")) {
-//           let category = lines[0].trim();
-//           parsedData[category] = [];
-
-//           for (let i = 3; i < lines.length; i++) {
-//             let cols = lines[i].split("|").map((col) => col.trim());
-//             if (cols.length >= 4) {
-//               parsedData[category].push({
-//                 dimension: cols[1],
-//                 score: parseInt(cols[2]),
-//                 evidence: cols[3],
-//                 rationale: cols[4],
-//               });
-//             }
+//               keygroupsCache[sheetName] =
+//                   keygroupResult.rows.length > 0
+//                       ? keygroupResult.rows[0].keygroup_id
+//                       : (await pool.query("SELECT keygroup_id FROM keygroups WHERE keygroup_name = $1", [sheetName])).rows[0].keygroup_id;
 //           }
-//         }
-//       });
 
-//       return parsedData;
-//     }
+//           const keygroupId = keygroupsCache[sheetName];
 
-//     const parsedData = parseResponse(data.response);
+//           let insertNewsData = [];
+//           let insertDimensionsData = [];
 
-//     let htmlContent = `
-//       <!DOCTYPE html>
-//       <html lang="en">
-//       <head>
-//           <meta charset="UTF-8">
-//           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-//           <title>KeyGroup Report - ${data.keygroup_name}</title>
-//           <script src="https://cdn.tailwindcss.com"></script>
-//       </head>
-//       <body class="bg-[#fbf9ef] p-6">
-//           <div class="max-w-6xl mx-auto bg-white p-6 rounded-lg shadow-md">
-//               <h1 class="text-3xl font-bold text-[#e27c34] mb-4">KeyGroup Report</h1>
-//               <h2 class="text-2xl font-semibold bg-[#d62101] text-white p-3 rounded">${data.keygroup_name} - ${data.keyword_name}</h2>
-//               <p><strong>Link:</strong> <a href="${data.link}" class="text-blue-500">${data.link}</a></p>
-//               <p><strong>Text:</strong> ${data.text}</p>
-//               <p><strong>Date:</strong> ${data.date}</p>
-//               <p><strong>Time:</strong> ${data.time}</p>`;
+//           for (let row of jsonData) {
+//             const processedRow = processExcelRow(row);
+            
+//             if (!processedRow) continue; // Skip rows with missing data
+          
+//             const { keyword_name, link, text, response, date, time } = processExcelRow(row);
+          
+//             const keywordKey = `${keygroupId}-${keyword_name}`;
+          
+//             if (!keywordsCache[keywordKey]) {
+//               let keywordResult = await pool.query(
+//                 "INSERT INTO keywords (keygroup_id, keyword_name) VALUES ($1, $2) ON CONFLICT (keygroup_id, keyword_name) DO NOTHING RETURNING keyword_id",
+//                 [keygroupId, keyword_name]
+//               );
+          
+//               keywordsCache[keywordKey] =
+//                 keywordResult.rows.length > 0
+//                   ? keywordResult.rows[0].keyword_id
+//                   : (await pool.query(
+//                       "SELECT keyword_id FROM keywords WHERE keygroup_id = $1 AND keyword_name = $2",
+//                       [keygroupId, keyword_name]
+//                     )).rows[0].keyword_id;
+//             }
+          
+//             const keywordId = keywordsCache[keywordKey];
+          
+//             insertNewsData.push({ keyword_id: keywordId, link, text, date, time, response });
+//           }
+          
+//           // ✅ Bulk Insert News Articles
+//           if (insertNewsData.length > 0) {
+//               const newsQuery = pgp.helpers.insert(insertNewsData, newsColumns) + " RETURNING article_id";
+//               const articlesResult = await pool.query(newsQuery);
 
-//     for (let category in parsedData) {
-//       htmlContent += `
-//               <h3 class="text-xl font-semibold text-[#e27c34] mt-6">${category}</h3>
-//               <table class="w-full table-auto border border-collapse border-gray-300 mt-3">
-//                   <thead>
-//                       <tr class="bg-[#fdf2d1]">
-//                           <th class="border px-4 py-2">Dimension</th>
-//                           <th class="border px-4 py-2">Score</th>
-//                           <th class="border px-4 py-2">Evidence</th>
-//                           <th class="border px-4 py-2">Rationale</th>
-//                       </tr>
-//                   </thead>
-//                   <tbody class="text-gray-700">`;
+//               articlesResult.rows.forEach(({ article_id }, index) => {
+//                   const parsedDimensions = parseResponse(insertNewsData[index].response);
+//                   parsedDimensions.forEach(({ category, dimension, score, evidence, rationale }) => {
+//                       insertDimensionsData.push({
+//                           article_id,
+//                           category,
+//                           dimension_name: dimension,
+//                           score,
+//                           evidence,
+//                           rationale,
+//                       });
+//                   });
+//               });
 
-//       parsedData[category].forEach((row) => {
-//         htmlContent += `
-//                   <tr class="border">
-//                       <td class="border px-4 py-2">${row.dimension}</td>
-//                       <td class="border px-4 py-2">${row.score}</td>
-//                       <td class="border px-4 py-2">${row.evidence}</td>
-//                       <td class="border px-4 py-2">${row.rationale}</td>
-//                   </tr>`;
-//       });
+//               // ✅ Bulk Insert Dimensions
+//               if (insertDimensionsData.length > 0) {
+//                   await bulkInsertDimensions(insertDimensionsData);
+//               }
+//           }
+//       }
 
-//       htmlContent += `</tbody></table>`;
-//     }
-
-//     htmlContent += `
-//           </div>
-//       </body>
-//       </html>`;
-
-//     // Save the generated HTML file
-//     const filePath = path.join(
-//       saveFolderPath,
-//       `s7-${data.keygroup_name.toLowerCase()}.html`
-//     );
-//     await fs.writeFile(filePath, htmlContent, "utf8");
-
-//     res.json({
-//       success: true,
-//       message: "HTML file generated successfully",
-//       filePath,
-//     });
+//       res.status(200).json({ success: true, message: "Excel data processed successfully!" });
 //   } catch (error) {
-//     console.error("Error generating HTML:", error);
-//     res
-//       .status(500)
-//       .json({ success: false, message: "Error generating HTML", error });
+//       console.error("🚨 Error processing Excel:", error);
+//       res.status(500).json({ success: false, message: "Error processing Excel file", error });
 //   }
 // });
 
+// function parseResponse(responseText) {
+//   let parsedData = [];
 
-// ****************************************excel file uploadad and send the data to postgre***************************************************************
-// Configure Multer for file uploads
+//   // Split response into sections using "Dimensions" as a delimiter
+//   let sections = responseText.split(/\n(?=[A-Za-z\s]+Dimensions)/g);
+
+//   sections.forEach(section => {
+//       let lines = section.trim().split("\n").map(line => line.trim()).filter(line => line);
+
+//       if (lines.length < 4) return; // Skip invalid sections
+
+//       let category = lines[0].replace(":", "").trim(); // Extract category name
+//       if (!category.toLowerCase().includes("dimensions")) return; // Ensure it's a valid category
+
+//       console.log(`🟢 Processing Category: ${category}`);
+
+//       // Locate the start of the table dynamically
+//       let tableStartIndex = lines.findIndex(line => line.includes("| Dimension | Score (1-10) | Evidence Found | Rationale for Score |"));
+//       if (tableStartIndex === -1) return; // Skip if no valid table found
+//       tableStartIndex += 2; // Move to first data row
+
+//       // Extract table rows
+//       for (let i = tableStartIndex; i < lines.length; i++) {
+//           let cols = lines[i].split("|").map(col => col.trim()).filter(col => col); // Split into columns
+
+//           if (cols.length >= 4 && !isNaN(parseInt(cols[1]))) { // Ensure row has a valid score
+//               parsedData.push({
+//                   category: category, // Example: "Passion Dimensions"
+//                   dimension: cols[0], // Example: "Probing"
+//                   score: parseInt(cols[1]), // Convert score to number
+//                   evidence: cols[2].replace(/["¹']/g, "").trim() || "N/A", // Remove quotes and special characters
+//                   rationale: cols[3].replace(/["¹']/g, "").trim() || "N/A" // Remove quotes and special characters
+//               });
+//           }
+//       }
+//   });
+
+//   console.log("✅ Parsed Data:", JSON.stringify(parsedData, null, 2));
+//   return parsedData;
+// }
 
 const upload = multer({ dest: "uploads/" });
 
 const newsColumns = new pgp.helpers.ColumnSet(
-  ["keyword_id", "link", "text", "date", "time", "response"],
+  ["keyword_id", "link", "text", "news_release_time", "data_processing_time", "response"],
   { table: "news_articles" }
 );
 
@@ -724,19 +755,19 @@ const processExcelRow = (row) => {
   const response = row["Response"]?.toString().trim() || "";
 
   // ✅ Ensure Date & Time Are Read Correctly
-  let date = row["Date"] || row["date"] || row["Date Time"] || "";
-  let time = row["Time"] || row["time"] || row["Date Time"] || "";
+  let news_release_time = row["Date"] || row["date"] || row["Date Time"]|| row["News Release Time"]|| "";
+  let data_processing_time = row["Time"] || row["time"] || row["Date Time"]|| row["Data Processing Time"]|| "";
 
   // ✅ Convert Excel Serial Numbers to Proper Date & Time Format
-  date = convertExcelDate(date);
-  time = convertExcelDate(time);
+  news_release_time = convertExcelDate(news_release_time);
+  data_processing_time = convertExcelDate(data_processing_time);
 
   if (!keyword_name || !link || !text || !response) {
     console.warn("❌ Skipping row due to missing critical data:", row);
     return null;
   }
 
-  return { keyword_name, link, text, response, date, time };
+  return { keyword_name, link, text, news_release_time, data_processing_time, response };
 };
 
 app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
@@ -779,7 +810,7 @@ app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
             
             if (!processedRow) continue; // Skip rows with missing data
           
-            const { keyword_name, link, text, response, date, time } = processExcelRow(row);
+            const { keyword_name, link, text, news_release_time, data_processing_time, response } = processExcelRow(row);
           
             const keywordKey = `${keygroupId}-${keyword_name}`;
           
@@ -800,7 +831,7 @@ app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
           
             const keywordId = keywordsCache[keywordKey];
           
-            insertNewsData.push({ keyword_id: keywordId, link, text, date, time, response });
+            insertNewsData.push({ keyword_id: keywordId, link, text, news_release_time, data_processing_time, response });
           }
           
           // ✅ Bulk Insert News Articles
@@ -810,11 +841,11 @@ app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
 
               articlesResult.rows.forEach(({ article_id }, index) => {
                   const parsedDimensions = parseResponse(insertNewsData[index].response);
-                  parsedDimensions.forEach(({ category, dimension, score, evidence, rationale }) => {
+                  parsedDimensions.forEach(({ category, dimension_name, score, evidence, rationale }) => {
                       insertDimensionsData.push({
                           article_id,
                           category,
-                          dimension_name: dimension,
+                          dimension_name,
                           score,
                           evidence,
                           rationale,
@@ -836,49 +867,68 @@ app.post("/atlas-api/upload-excel", upload.single("file"), async (req, res) => {
   }
 });
 
+
 function parseResponse(responseText) {
   let parsedData = [];
+  let lines = responseText.split("\n").map(line => line.trim());
 
-  // Split response into sections using "Dimensions" as a delimiter
-  let sections = responseText.split(/\n(?=[A-Za-z\s]+Dimensions)/g);
+  let currentCategory = null;
+  let tableStart = false;
 
-  sections.forEach(section => {
-      let lines = section.trim().split("\n").map(line => line.trim()).filter(line => line);
+  for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
 
-      if (lines.length < 4) return; // Skip invalid sections
+      // ✅ Detect Category Headers (Handles all variations)
+      if (line.match(/Dimensions$/i) && !line.includes("|")) { 
+          currentCategory = line.trim();
+          tableStart = false; // Reset table detection for a new category
+          continue;
+      }
 
-      let category = lines[0].replace(":", "").trim(); // Extract category name
-      if (!category.toLowerCase().includes("dimensions")) return; // Ensure it's a valid category
+      // ✅ Detect Start of Table (Handles Both Header Variations)
+      if ((line.includes("| Dimension | Score | Evidence Found | Rationale for Score |") || 
+           line.includes("| Dimension | Score (1-10) | Evidence Found | Rationale for Score |")) 
+           && currentCategory) {
+          tableStart = true;
+          continue; // Move to next line to capture data
+      }
 
-      console.log(`🟢 Processing Category: ${category}`);
+      // ✅ Extract Table Data
+      if (tableStart) {
+          // let cols = line.split(/\s*\|\s*/).slice(1, -1); // Split by `|` but keep empty columns
+          // let cols = line.split("|").map(col => col.trim()).filter(col => col);
+          let cols = line.split(/\s*\|\s*/).slice(1, -1).map(col => col.trim() || "N/A");
 
-      // Locate the start of the table dynamically
-      let tableStartIndex = lines.findIndex(line => line.includes("| Dimension | Score (1-10) | Evidence Found | Rationale for Score |"));
-      if (tableStartIndex === -1) return; // Skip if no valid table found
-      tableStartIndex += 2; // Move to first data row
-
-      // Extract table rows
-      for (let i = tableStartIndex; i < lines.length; i++) {
-          let cols = lines[i].split("|").map(col => col.trim()).filter(col => col); // Split into columns
-
-          if (cols.length >= 4 && !isNaN(parseInt(cols[1]))) { // Ensure row has a valid score
+          // Ensure we have exactly 4 columns & valid score
+          if (cols.length === 4 && !isNaN(parseInt(cols[1]))) {
               parsedData.push({
-                  category: category, // Example: "Passion Dimensions"
-                  dimension: cols[0], // Example: "Probing"
-                  score: parseInt(cols[1]), // Convert score to number
-                  evidence: cols[2].replace(/["¹']/g, "").trim() || "N/A", // Remove quotes and special characters
-                  rationale: cols[3].replace(/["¹']/g, "").trim() || "N/A" // Remove quotes and special characters
+                  category: currentCategory, // Example: "Passion Dimensions"
+                  dimension_name: cols[0] ? cols[0].trim() : "Unknown", // "Probing"
+                  score: parseInt(cols[1]), // Convert score to integer
+                  evidence: cols[2].replace(/["¹'\[\]]/g, "").trim() || "N/A", // Clean evidence text
+                  rationale: cols[3].replace(/["¹'\[\]]/g, "").trim() || "N/A" // Clean rationale text
               });
+          } 
+          // ✅ Handle End of Table (Stop when a non-table line appears)
+          else if (!line.includes("|")) {
+              tableStart = false;
           }
       }
-  });
+  }
 
   console.log("✅ Parsed Data:", JSON.stringify(parsedData, null, 2));
   return parsedData;
 }
 
+
+
+
+
+
+
 // ******************************popping up html page according to keygroup like Google, Donald Trump, India*************************************************************************
 // Fetch KeyGroup Data (News + Dimensions) from PostgreSQL
+
 app.get("/atlas-api/keygroup/:keygroupId", async (req, res) => {
   try {
     const { keygroupId } = req.params;
